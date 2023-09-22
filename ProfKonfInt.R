@@ -16,11 +16,14 @@ mypredict <- function(mod, new_data, alpha=0.05){
   new_form <- update(formula(mod), NULL ~.)
   x_0 <- model.matrix(new_form, new_data, xlev=mod$xlevels)
   ind <- first_nonz_ind(x_0)
-  a <- as.numeric(predict.glm(mod, newdata=new_data, type="link"))
+  pred<-predict.glm(mod, newdata=new_data, type="link", se.fit=T)
+  mle_eta_0 <- as.numeric(pred$fit)
+  left_wald<-pred$fit-1.96*pred$se.fit
+  right_wald<-pred$fit+1.96*pred$se.fit
   
   #Defining function giving the value of eta for the desired quantile by the inverted LRT 
   cutoff<-function(x)
-  {return(proflik(x) - proflik(a) + qchisq(1-alpha, 1)/2)}
+  {return(proflik(x) - proflik(mle_eta_0) + qchisq(1-alpha, 1)/2)}
   
   #Extracting response and design matrix
   mat <- model.matrix(formula(mod), X)
@@ -45,14 +48,13 @@ mypredict <- function(mod, new_data, alpha=0.05){
     return(log_lik_new)
   }
   
-  # Todo - select interval in a smarter way. Probably select as some function of the wald interval endpoints
-  # Currently just extending the interval as a test
-  right<-uniroot(cutoff, lower=0, upper=10)$root
-  left<-uniroot(cutoff, lower=-5, upper=right)$root
+  # Todo - select interval in a smarter way.
+  left<-uniroot(cutoff, lower=2*left_wald, upper=mle_eta_0)$root
+  right<-uniroot(cutoff, lower=mle_eta_0, upper=2*right_wald)$root
   return(c(left, right))
 }
 
-#Test
+#Test when n=10000
 library(ISLR)
 dataset<-ISLR::Default
 mod_test <- glm(default~., family=binomial(link = "logit"), data=as.data.frame(dataset))
@@ -63,14 +65,25 @@ conf_int <- c(pred$fit-1.96*pred$se.fit, pred$fit+1.96*pred$se.fit)
 #95 % Wald for eta_0
 conf_int
 
-#Supposed 95% profile conf. int for eta_0 - not working
+#Supposed 95% profile conf. int for eta_0
 mypredict(mod_test, new_data=data.frame(student="Yes", balance=2000, income=40000), alpha=0.05)
 
-# Test plot for the root - not achieving anything close to 0 in a much larger interval than the wald 95% quantiles
-# Have to run line 62 to 80 and then everything inside the mypredict function to be able to run the lines below
-mod<-mod_test; alpha=0.05; new_data<-data.frame(student="Yes", balance=2000, income=40000)
+#Test when n=1000
+dataset1<-dataset[sample(10000, size=1000, replace=F),]
+mod_test_1 <- glm(default~., family=binomial(link = "logit"), data=as.data.frame(dataset1))
+pred_1 <- predict.glm(mod_test_1, newdata=data.frame(student="Yes", balance=2000, income=40000), type="link", se.fit=T)
+conf_int_1 <- c(pred_1$fit-1.96*pred_1$se.fit, pred_1$fit+1.96*pred_1$se.fit)
+conf_int_1
+mypredict(mod_test_1, new_data=data.frame(student="Yes", balance=2000, income=40000), alpha=0.05)
 
-å<-lapply(seq(-10, 10, by=0.1), cutoff)
-plot(seq(-10, 10, by=0.1), å, xlab="eta_0", ylab="f(eta_0)")
-abline(h=0)
+
+#Test when n=100
+dataset2<-dataset[sample(10000, size=100, replace=F),]
+mod_test_2 <- glm(default~., family=binomial(link = "logit"), data=as.data.frame(dataset2))
+pred_2 <- predict.glm(mod_test_2, newdata=data.frame(student="Yes", balance=2000, income=40000), type="link", se.fit=T)
+conf_int_2 <- c(pred_2$fit-1.96*pred_2$se.fit, pred_2$fit+1.96*pred_2$se.fit)
+conf_int_2
+mypredict(mod_test_2, new_data=data.frame(student="Yes", balance=2000, income=40000), alpha=0.05)
+
+
 
