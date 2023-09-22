@@ -17,6 +17,7 @@ mypredict <- function(mod, new_data, alpha=0.05){
   x_0 <- model.matrix(new_form, new_data, xlev=mod$xlevels)
   ind <- first_nonz_ind(x_0)
   pred<-predict.glm(mod, newdata=new_data, type="link", se.fit=T)
+  
   mle_eta_0 <- as.numeric(pred$fit)
   left_wald<-pred$fit-1.96*pred$se.fit
   right_wald<-pred$fit+1.96*pred$se.fit
