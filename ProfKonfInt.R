@@ -98,8 +98,29 @@ mypredict(mod_test_3, new_data=data.frame(student="Yes", balance=2000, income=40
 
 
 
+#Coverage for n=1000
 m<-100
 design<-subset(dataset1, select=-1)
+y<-simulate(mod_test, nsim=m)
+colnames(y)<-rep("default", m)
+test_proflik<-rep(NA, m)
+test_wald<-rep(NA,m)
+oldpred<-predict(mod_test, newdata=data.frame(student="Yes", balance=2000, income=40000), type="link", se.fit=T)
+for (i in 1:m){
+  mod_ci<-glm(formula(mod_test), family=family(mod_test), data=cbind(y[i],design))
+  pred<-predict(mod_ci, newdata=data.frame(student="Yes", balance=2000, income=40000), type="link", se.fit=T)
+  conf_int_prof<-mypredict(mod_test, new_data=data.frame(student="Yes", balance=2000, income=40000), alpha=0.05)
+  conf_int_wald<-c(pred$fit-1.96*pred$se.fit, pred$fit+1.96*pred$se.fit)
+  test_proflik[i] <-ifelse(conf_int_prof[1]<=pred & pred<=conf_int_prof[2], 1, 0)
+  test_wald[i] <-ifelse(conf_int_wald[1]<=oldpred$fit & oldpred$fit<=conf_int_wald[2], 1, 0)
+}
+sum(test_proflik)
+sum(test_wald)
+
+
+#Coverage for n=100
+m<-1000
+design<-subset(dataset2, select=-1)
 y<-simulate(mod_test, nsim=m)
 colnames(y)<-rep("default", m)
 test_proflik<-rep(NA, m)
