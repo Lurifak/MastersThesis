@@ -1,3 +1,5 @@
+set.seed(2)
+
 mypredict <- function(mod, new_data, alpha=0.05){
   
   #Gives the first nonzero index of a vector
@@ -50,8 +52,8 @@ mypredict <- function(mod, new_data, alpha=0.05){
   }
   
   # Todo - select interval in a smarter way.
-  left<-uniroot(cutoff, lower=2*left_wald, upper=mle_eta_0)$root
-  right<-uniroot(cutoff, lower=mle_eta_0, upper=2*right_wald)$root
+  left<-uniroot(cutoff, lower=2*left_wald, upper=mle_eta_0, extendInt="upX")$root
+  right<-uniroot(cutoff, lower=mle_eta_0, upper=2*right_wald, extendInt="downX")$root
   return(c(left, right))
 }
 
@@ -86,5 +88,30 @@ conf_int_2 <- c(pred_2$fit-1.96*pred_2$se.fit, pred_2$fit+1.96*pred_2$se.fit)
 conf_int_2
 mypredict(mod_test_2, new_data=data.frame(student="Yes", balance=2000, income=40000), alpha=0.05)
 
+#Test when n=50
+dataset3<-dataset[sample(10000, size=50, replace=F),]
+mod_test_3 <- glm(default~., family=binomial(link = "logit"), data=as.data.frame(dataset3))
+pred_3 <- predict.glm(mod_test_3, newdata=data.frame(student="Yes", balance=2000, income=40000), type="link", se.fit=T)
+conf_int_3 <- c(pred_3$fit-1.96*pred_3$se.fit, pred_3$fit+1.96*pred_3$se.fit)
+conf_int_3
+mypredict(mod_test_3, new_data=data.frame(student="Yes", balance=2000, income=40000), alpha=0.05)
 
 
+
+m<-100
+design<-subset(dataset1, select=-1)
+y<-simulate(mod_test, nsim=m)
+colnames(y)<-rep("default", m)
+test_proflik<-rep(NA, m)
+test_wald<-rep(NA,m)
+oldpred<-predict(mod_test, newdata=data.frame(student="Yes", balance=2000, income=40000), type="link", se.fit=T)
+for (i in 1:m){
+  mod_ci<-glm(formula(mod_test), family=family(mod_test), data=cbind(y[i],design))
+  pred<-predict(mod_ci, newdata=data.frame(student="Yes", balance=2000, income=40000), type="link", se.fit=T)
+  conf_int_prof<-mypredict(mod_test, new_data=data.frame(student="Yes", balance=2000, income=40000), alpha=0.05)
+  conf_int_wald<-c(pred$fit-1.96*pred$se.fit, pred$fit+1.96*pred$se.fit)
+  test_proflik[i] <-ifelse(conf_int_prof[1]<=pred & pred<=conf_int_prof[2], 1, 0)
+  test_wald[i] <-ifelse(conf_int_wald[1]<=oldpred$fit & oldpred$fit<=conf_int_wald[2], 1, 0)
+}
+sum(test_proflik)
+sum(test_wald)
