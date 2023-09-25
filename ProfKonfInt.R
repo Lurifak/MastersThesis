@@ -21,8 +21,7 @@ mypredict <- function(mod, new_data, alpha=0.05){
   pred<-predict.glm(mod, newdata=new_data, type="link", se.fit=T)
   
   mle_eta_0 <- as.numeric(pred$fit)
-  left_wald<-pred$fit-1.96*pred$se.fit
-  right_wald<-pred$fit+1.96*pred$se.fit
+  se<-1.96*pred$se.fit
   
   #Defining function giving the value of eta for the desired quantile by the inverted LRT 
   cutoff<-function(x)
@@ -52,8 +51,8 @@ mypredict <- function(mod, new_data, alpha=0.05){
   }
   
   # Todo - select interval in a smarter way.
-  left<-uniroot(cutoff, lower=2*left_wald, upper=mle_eta_0, extendInt="upX")$root
-  right<-uniroot(cutoff, lower=mle_eta_0, upper=2*right_wald, extendInt="downX")$root
+  left<-uniroot(cutoff, lower=mle_eta_0 - 2 * se, upper=mle_eta_0, extendInt="upX")$root
+  right<-uniroot(cutoff, lower=mle_eta_0, upper=mle_eta_0 + 2 * se, extendInt="downX")$root
   return(c(left, right))
 }
 
@@ -98,20 +97,23 @@ mypredict(mod_test_3, new_data=data.frame(student="Yes", balance=2000, income=40
 
 
 
+alpha<-0.1
+se<-qnorm(1-alpha/2)
+
 #Coverage for n=1000
-m<-100
+m<-1000
 design<-subset(dataset1, select=-1)
-y<-simulate(mod_test, nsim=m)
+y<-simulate(mod_test_1, nsim=m)
 colnames(y)<-rep("default", m)
 test_proflik<-rep(NA, m)
 test_wald<-rep(NA,m)
-oldpred<-predict(mod_test, newdata=data.frame(student="Yes", balance=2000, income=40000), type="link", se.fit=T)
+oldpred<-predict(mod_test_1, newdata=data.frame(student="Yes", balance=2000, income=40000), type="link", se.fit=T)
 for (i in 1:m){
   mod_ci<-glm(formula(mod_test), family=family(mod_test), data=cbind(y[i],design))
   pred<-predict(mod_ci, newdata=data.frame(student="Yes", balance=2000, income=40000), type="link", se.fit=T)
-  conf_int_prof<-mypredict(mod_test, new_data=data.frame(student="Yes", balance=2000, income=40000), alpha=0.05)
-  conf_int_wald<-c(pred$fit-1.96*pred$se.fit, pred$fit+1.96*pred$se.fit)
-  test_proflik[i] <-ifelse(conf_int_prof[1]<=pred & pred<=conf_int_prof[2], 1, 0)
+  conf_int_prof<-mypredict(mod_ci, new_data=data.frame(student="Yes", balance=2000, income=40000), alpha=0.1)
+  conf_int_wald<-c(pred$fit-se*pred$se.fit, pred$fit+se*pred$se.fit)
+  test_proflik[i] <-ifelse(conf_int_prof[1]<=oldpred & oldpred<=conf_int_prof[2], 1, 0)
   test_wald[i] <-ifelse(conf_int_wald[1]<=oldpred$fit & oldpred$fit<=conf_int_wald[2], 1, 0)
 }
 sum(test_proflik)
@@ -121,17 +123,36 @@ sum(test_wald)
 #Coverage for n=100
 m<-1000
 design<-subset(dataset2, select=-1)
-y<-simulate(mod_test, nsim=m)
+y<-simulate(mod_test_2, nsim=m)
 colnames(y)<-rep("default", m)
 test_proflik<-rep(NA, m)
 test_wald<-rep(NA,m)
-oldpred<-predict(mod_test, newdata=data.frame(student="Yes", balance=2000, income=40000), type="link", se.fit=T)
+oldpred<-predict(mod_test_2, newdata=data.frame(student="Yes", balance=2000, income=40000), type="link", se.fit=T)
 for (i in 1:m){
   mod_ci<-glm(formula(mod_test), family=family(mod_test), data=cbind(y[i],design))
   pred<-predict(mod_ci, newdata=data.frame(student="Yes", balance=2000, income=40000), type="link", se.fit=T)
-  conf_int_prof<-mypredict(mod_test, new_data=data.frame(student="Yes", balance=2000, income=40000), alpha=0.05)
-  conf_int_wald<-c(pred$fit-1.96*pred$se.fit, pred$fit+1.96*pred$se.fit)
-  test_proflik[i] <-ifelse(conf_int_prof[1]<=pred & pred<=conf_int_prof[2], 1, 0)
+  conf_int_prof<-mypredict(mod_ci, new_data=data.frame(student="Yes", balance=2000, income=40000), alpha=0.1)
+  conf_int_wald<-c(pred$fit-se*pred$se.fit, pred$fit+se*pred$se.fit)
+  test_proflik[i] <-ifelse(conf_int_prof[1]<=oldpred & oldpred<=conf_int_prof[2], 1, 0)
+  test_wald[i] <-ifelse(conf_int_wald[1]<=oldpred$fit & oldpred$fit<=conf_int_wald[2], 1, 0)
+}
+sum(test_proflik)
+sum(test_wald)
+
+#Coverage for n=50
+m<-1000
+design<-subset(dataset3, select=-1)
+y<-simulate(mod_test_3, nsim=m)
+colnames(y)<-rep("default", m)
+test_proflik<-rep(NA, m)
+test_wald<-rep(NA,m)
+oldpred<-predict(mod_test_3, newdata=data.frame(student="Yes", balance=2000, income=40000), type="link", se.fit=T)
+for (i in 1:m){
+  mod_ci<-glm(formula(mod_test), family=family(mod_test), data=cbind(y[i],design))
+  pred<-predict(mod_ci, newdata=data.frame(student="Yes", balance=2000, income=40000), type="link", se.fit=T)
+  conf_int_prof<-mypredict(mod_ci, new_data=data.frame(student="Yes", balance=2000, income=40000), alpha=0.1)
+  conf_int_wald<-c(pred$fit-se*pred$se.fit, pred$fit+se*pred$se.fit)
+  test_proflik[i] <-ifelse(conf_int_prof[1]<=oldpred & oldpred<=conf_int_prof[2], 1, 0)
   test_wald[i] <-ifelse(conf_int_wald[1]<=oldpred$fit & oldpred$fit<=conf_int_wald[2], 1, 0)
 }
 sum(test_proflik)
