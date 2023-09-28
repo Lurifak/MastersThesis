@@ -21,7 +21,7 @@ mypredict <- function(mod, new_data, alpha=0.05){
   pred<-predict.glm(mod, newdata=new_data, type="link", se.fit=T)
   
   mle_eta_0 <- as.numeric(pred$fit)
-  se<-1.96*pred$se.fit
+  se<-qnorm(1-alpha/2)*pred$se.fit
   
   #Defining function giving the value of eta for the desired quantile by the inverted LRT 
   cutoff<-function(x)
@@ -79,8 +79,8 @@ conf_int_1
 mypredict(mod_test_1, new_data=data.frame(student="Yes", balance=2000, income=40000), alpha=0.05)
 
 
-#Test when n=100
-dataset2<-dataset[sample(10000, size=100, replace=F),]
+#Test when n=200
+dataset2<-dataset[sample(10000, size=200, replace=F),]
 mod_test_2 <- glm(default~., family=binomial(link = "logit"), data=as.data.frame(dataset2))
 pred_2 <- predict.glm(mod_test_2, newdata=data.frame(student="Yes", balance=2000, income=40000), type="link", se.fit=T)
 conf_int_2 <- c(pred_2$fit-1.96*pred_2$se.fit, pred_2$fit+1.96*pred_2$se.fit)
@@ -96,9 +96,6 @@ conf_int_3
 mypredict(mod_test_3, new_data=data.frame(student="Yes", balance=2000, income=40000), alpha=0.05)
 
 
-
-alpha<-0.1
-se<-qnorm(1-alpha/2)
 
 #Coverage for n=1000
 m<-1000
@@ -120,7 +117,7 @@ sum(test_proflik)
 sum(test_wald)
 
 
-#Coverage for n=100
+#Coverage for n=200
 m<-1000
 design<-subset(dataset2, select=-1)
 y<-simulate(mod_test_2, nsim=m)
@@ -131,7 +128,7 @@ oldpred<-predict(mod_test_2, newdata=data.frame(student="Yes", balance=2000, inc
 for (i in 1:m){
   mod_ci<-glm(formula(mod_test), family=family(mod_test), data=cbind(y[i],design))
   pred<-predict(mod_ci, newdata=data.frame(student="Yes", balance=2000, income=40000), type="link", se.fit=T)
-  conf_int_prof<-mypredict(mod_ci, new_data=data.frame(student="Yes", balance=2000, income=40000), alpha=0.1)
+  conf_int_prof<-mypredict(mod_ci, new_data=data.frame(student="Yes", balance=2000, income=40000), alpha=0.01)
   conf_int_wald<-c(pred$fit-se*pred$se.fit, pred$fit+se*pred$se.fit)
   test_proflik[i] <-ifelse(conf_int_prof[1]<=oldpred & oldpred<=conf_int_prof[2], 1, 0)
   test_wald[i] <-ifelse(conf_int_wald[1]<=oldpred$fit & oldpred$fit<=conf_int_wald[2], 1, 0)
@@ -153,6 +150,41 @@ for (i in 1:m){
   conf_int_prof<-mypredict(mod_ci, new_data=data.frame(student="Yes", balance=2000, income=40000), alpha=0.1)
   conf_int_wald<-c(pred$fit-se*pred$se.fit, pred$fit+se*pred$se.fit)
   test_proflik[i] <-ifelse(conf_int_prof[1]<=oldpred & oldpred<=conf_int_prof[2], 1, 0)
+  test_wald[i] <-ifelse(conf_int_wald[1]<=oldpred$fit & oldpred$fit<=conf_int_wald[2], 1, 0)
+}
+sum(test_proflik)
+sum(test_wald)
+
+
+
+
+#Single covariate testing
+library(ISLR)
+dataset_s<-subset(ISLR::Default, select=c(1,3))
+mod_s <- glm(default~., family=binomial(link = "logit"), data=as.data.frame(dataset_s))
+summary(mod_s)
+
+#n=1000
+dataset_s_1000<-dataset_s[sample(10000, size=1000, replace=F),]
+mod_s_1000 <- glm(default~., family=binomial(link = "logit"), data=as.data.frame(dataset_s_1000))
+alpha<-0.1
+se<-qnorm(1-alpha/2)
+
+m<-10
+design<-subset(dataset_s_1000, select=-1)
+y<-simulate(mod_s_1000, nsim=m)
+colnames(y)<-rep("default", m)
+test_proflik<-rep(NA, m)
+test_wald<-rep(NA,m)
+oldpred<-predict(mod_s_1000, newdata=data.frame(balance=2500), type="link", se.fit=T)
+for (i in 1:m){
+  mod_ci<-glm(formula(mod_s), family=family(mod_s), data=cbind(y[i],design))
+  pred<-predict(mod_ci, newdata=data.frame(balance=2500), type="link", se.fit=T)
+  conf_int_prof<-mypredict(mod_ci, new_data=data.frame(balance=2500), alpha=0.1)
+  conf_int_wald<-c(pred$fit-se*pred$se.fit, pred$fit+se*pred$se.fit)
+  print(conf_int_prof)
+  print(conf_int_wald)
+  test_proflik[i] <-ifelse(conf_int_prof[1]<=oldpred$fit & oldpred$fit<=conf_int_prof[2], 1, 0)
   test_wald[i] <-ifelse(conf_int_wald[1]<=oldpred$fit & oldpred$fit<=conf_int_wald[2], 1, 0)
 }
 sum(test_proflik)
