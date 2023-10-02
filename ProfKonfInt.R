@@ -40,11 +40,11 @@ mypredict <- function(mod, new_data, alpha=0.05){
   if(is.factor(response)){response <- as.numeric(as.factor(response)) - 1}
   
   #Defining X_star from stackexchange
-  X_star<-subset(mat, select = -(ind+1)) - (1/x_0[ind])*mat[,ind+1]%*%t(x_0[-ind])
+  X_star<-subset(mat, select = -(ind+1)) - (1/x_0[ind+1])*mat[,ind+1]%*%t(x_0[-(ind+1)])
   
   #Defining the function for the profile likelihood given eta_0
   proflik<-function(eta_0){
-    offset_star <- as.vector((1/x_0[ind]) * eta_0 * mat[,ind+1])
+    offset_star <- as.vector((1/x_0[ind+1]) * eta_0 * mat[,ind+1])
     new_mod<-glm.fit(X_star, response, offset=offset_star, family = family(mod))
     log_lik_new<-length(new_mod$coef) - new_mod$aic/2 #AIC := 2p - 2 ln L <=> ln L = p - AIC/2
     return(log_lik_new)
@@ -170,20 +170,18 @@ mod_s_1000 <- glm(default~., family=binomial(link = "logit"), data=as.data.frame
 alpha<-0.1
 se<-qnorm(1-alpha/2)
 
-m<-10
+m<-100000
 design<-subset(dataset_s_1000, select=-1)
 y<-simulate(mod_s_1000, nsim=m)
 colnames(y)<-rep("default", m)
 test_proflik<-rep(NA, m)
 test_wald<-rep(NA,m)
-oldpred<-predict(mod_s_1000, newdata=data.frame(balance=2500), type="link", se.fit=T)
+oldpred<-predict(mod_s_1000, newdata=data.frame(balance=3000), type="link", se.fit=T)
 for (i in 1:m){
   mod_ci<-glm(formula(mod_s), family=family(mod_s), data=cbind(y[i],design))
-  pred<-predict(mod_ci, newdata=data.frame(balance=2500), type="link", se.fit=T)
-  conf_int_prof<-mypredict(mod_ci, new_data=data.frame(balance=2500), alpha=0.1)
+  pred<-predict(mod_ci, newdata=data.frame(balance=3000), type="link", se.fit=T)
+  conf_int_prof<-mypredict(mod_ci, new_data=data.frame(balance=3000), alpha=0.1)
   conf_int_wald<-c(pred$fit-se*pred$se.fit, pred$fit+se*pred$se.fit)
-  print(conf_int_prof)
-  print(conf_int_wald)
   test_proflik[i] <-ifelse(conf_int_prof[1]<=oldpred$fit & oldpred$fit<=conf_int_prof[2], 1, 0)
   test_wald[i] <-ifelse(conf_int_wald[1]<=oldpred$fit & oldpred$fit<=conf_int_wald[2], 1, 0)
 }
