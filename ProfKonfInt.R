@@ -1,3 +1,5 @@
+library(faraway)
+
 set.seed(2)
 
 mypredict <- function(mod, new_data, alpha=0.05){
@@ -161,8 +163,6 @@ sum(test_wald)
 #Single covariate testing
 library(ISLR)
 dataset_s<-subset(ISLR::Default, select=c(1,3))
-mod_s <- glm(default~., family=binomial(link = "logit"), data=as.data.frame(dataset_s))
-summary(mod_s)
 
 #n=1000
 dataset_s_1000<-dataset_s[sample(10000, size=1000, replace=F),]
@@ -170,13 +170,13 @@ mod_s_1000 <- glm(default~., family=binomial(link = "logit"), data=as.data.frame
 alpha<-0.1
 se<-qnorm(1-alpha/2)
 
-m<-100000
+m<-10000
 design<-subset(dataset_s_1000, select=-1)
 y<-simulate(mod_s_1000, nsim=m)
 colnames(y)<-rep("default", m)
 test_proflik<-rep(NA, m)
 test_wald<-rep(NA,m)
-oldpred<-predict(mod_s_1000, newdata=data.frame(balance=3000), type="link", se.fit=T)
+oldpred<-predict(mod_s_1000, newdata=data.frame(balance=3000), type="link", se.fit=T) #p_0 roughly 0.995
 for (i in 1:m){
   mod_ci<-glm(formula(mod_s), family=family(mod_s), data=cbind(y[i],design))
   pred<-predict(mod_ci, newdata=data.frame(balance=3000), type="link", se.fit=T)
@@ -187,3 +187,115 @@ for (i in 1:m){
 }
 sum(test_proflik)
 sum(test_wald)
+
+#n=500
+dataset_s_500<-dataset_s[sample(10000, size=500, replace=F),]
+mod_s_500 <- glm(default~., family=binomial(link = "logit"), data=as.data.frame(dataset_s_500))
+alpha<-0.05
+se<-qnorm(1-alpha/2)
+
+m<-50000
+design<-subset(dataset_s_500, select=-1)
+y<-simulate(mod_s_500, nsim=m)
+colnames(y)<-rep("default", m)
+test_proflik<-rep(NA, m)
+test_wald<-rep(NA,m)
+oldpred<-predict(mod_s_500, newdata=data.frame(balance=3000), type="link", se.fit=T)
+for (i in 1:m){
+  mod_ci<-glm(formula(mod_s), family=family(mod_s), data=cbind(y[i],design))
+  pred<-predict(mod_ci, newdata=data.frame(balance=3000), type="link", se.fit=T)
+  conf_int_prof<-mypredict(mod_ci, new_data=data.frame(balance=3000), alpha=0.05)
+  conf_int_wald<-c(pred$fit-se*pred$se.fit, pred$fit+se*pred$se.fit)
+  test_proflik[i] <-ifelse(conf_int_prof[1]<=oldpred$fit & oldpred$fit<=conf_int_prof[2], 1, 0)
+  test_wald[i] <-ifelse(conf_int_wald[1]<=oldpred$fit & oldpred$fit<=conf_int_wald[2], 1, 0)
+}
+sum(test_proflik)/m
+sum(test_wald)/m
+
+# n=1000
+
+dataset_s_1000<-dataset_s[sample(10000, size=1000, replace=F),]
+mod_s_1000 <- glm(default~., family=binomial(link = "logit"), data=as.data.frame(dataset_s_1000))
+alpha<-0.05
+se<-qnorm(1-alpha/2)
+
+m<-50000
+design<-subset(dataset_s_1000, select=-1)
+y<-simulate(mod_s_1000, nsim=m)
+colnames(y)<-rep("default", m)
+test_proflik<-rep(NA, m)
+test_wald<-rep(NA,m)
+oldpred<-predict(mod_s_1000, newdata=data.frame(balance=3000), type="link", se.fit=T)
+for (i in 1:m){
+  mod_ci<-glm(formula(mod_s_200), family=family(mod_s_200), data=cbind(y[i],design))
+  pred<-predict(mod_ci, newdata=data.frame(balance=3000), type="link", se.fit=T)
+  conf_int_prof<-mypredict(mod_ci, new_data=data.frame(balance=3000), alpha=0.05)
+  conf_int_wald<-c(pred$fit-se*pred$se.fit, pred$fit+se*pred$se.fit)
+  test_proflik[i] <-ifelse(conf_int_prof[1]<=oldpred$fit & oldpred$fit<=conf_int_prof[2], 1, 0)
+  test_wald[i] <-ifelse(conf_int_wald[1]<=oldpred$fit & oldpred$fit<=conf_int_wald[2], 1, 0)
+}
+sum(test_proflik)/m
+sum(test_wald)/m
+
+#Poisson test
+n<-1000
+x_1 <- rnorm(n)
+lam <- exp(1 + x_1)
+y<-rep(NA, n) 
+for(i in 1:n)
+  {y[i]<-rpois(n=1, lambda=lam[i])}
+name<-c("y", "x_1")
+dataset_pois<-as.data.frame(cbind(y,x_1), col.names=name)
+mod_pois <- glm(y~., data=dataset_pois, family=poisson)
+
+m<-50000
+alpha<-0.05
+se<-qnorm(1-alpha/2)
+design<-subset(dataset_pois, select=-1)
+y<-simulate(mod_pois, nsim=m)
+colnames(y)<-rep("y", m)
+test_proflik<-rep(NA, m)
+test_wald<-rep(NA,m)
+oldpred<-predict(mod_pois, newdata=data.frame(x_1=4), type="link", se.fit=T)
+for (i in 1:m){
+  mod_ci<-glm(formula(mod_pois), family=family(mod_pois), data=cbind(y[i],design))
+  pred<-predict(mod_ci, newdata=data.frame(x_1=4), type="link", se.fit=T)
+  conf_int_prof<-mypredict(mod_ci, new_data=data.frame(x_1=4), alpha=0.05)
+  conf_int_wald<-c(pred$fit-se*pred$se.fit, pred$fit+se*pred$se.fit)
+  test_proflik[i] <-ifelse(conf_int_prof[1]<=oldpred$fit & oldpred$fit<=conf_int_prof[2], 1, 0)
+  test_wald[i] <-ifelse(conf_int_wald[1]<=oldpred$fit & oldpred$fit<=conf_int_wald[2], 1, 0)
+}
+sum(test_proflik)/m
+sum(test_wald)/m
+
+ 
+#Poisson test 2
+n<-10
+x_1 <- rnorm(n)
+lam <- exp( 5 * x_1)
+y<-rep(NA, n) 
+for(i in 1:n)
+{y[i]<-rpois(n=1, lambda=lam[i])}
+name<-c("y", "x_1")
+dataset_pois<-as.data.frame(cbind(y,x_1), col.names=name)
+mod_pois <- glm(y~., data=dataset_pois, family=poisson)
+
+m<-50000
+alpha<-0.05
+se<-qnorm(1-alpha/2)
+design<-subset(dataset_pois, select=-1)
+y<-simulate(mod_pois, nsim=m)
+colnames(y)<-rep("y", m)
+test_proflik<-rep(NA, m)
+test_wald<-rep(NA,m)
+oldpred<-predict(mod_pois, newdata=data.frame(x_1=4), type="link", se.fit=T)
+for (i in 1:m){
+  mod_ci<-glm(formula(mod_pois), family=family(mod_pois), data=cbind(y[i],design))
+  pred<-predict(mod_ci, newdata=data.frame(x_1=4), type="link", se.fit=T)
+  conf_int_prof<-mypredict(mod_ci, new_data=data.frame(x_1=4), alpha=0.05)
+  conf_int_wald<-c(pred$fit-se*pred$se.fit, pred$fit+se*pred$se.fit)
+  test_proflik[i] <-ifelse(conf_int_prof[1]<=oldpred$fit & oldpred$fit<=conf_int_prof[2], 1, 0)
+  test_wald[i] <-ifelse(conf_int_wald[1]<=oldpred$fit & oldpred$fit<=conf_int_wald[2], 1, 0)
+}
+sum(test_proflik)/m
+sum(test_wald)/m
