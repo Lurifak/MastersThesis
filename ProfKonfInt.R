@@ -272,7 +272,7 @@ sum(test_wald)/m
 #Poisson test 2
 n<-10
 x_1 <- rnorm(n)
-lam <- exp( 5 * x_1)
+lam <- exp(5 * x_1)
 y<-rep(NA, n) 
 for(i in 1:n)
 {y[i]<-rpois(n=1, lambda=lam[i])}
@@ -299,3 +299,82 @@ for (i in 1:m){
 }
 sum(test_proflik)/m
 sum(test_wald)/m
+
+#Gamma test
+library(faraway)
+data(wafer)
+m3 <- glm(formula = resist ~ x1 + x2 + x3 + x4,
+                         family  = Gamma(link = "log"),
+                         data    = wafer)
+m<-50000
+alpha<-0.05
+se<-qnorm(1-alpha/2)
+design<-subset(m3$model, select=-1)
+y<-simulate(m3, nsim=m)
+colnames(y)<-rep("resist", m)
+test_proflik<-rep(NA, m)
+test_wald<-rep(NA,m)
+oldpred<-predict(m3, newdata=data.frame("x1"= '+',"x2"= '+',"x3"='+',"x4"='+'), type="link", se.fit=T)
+for (i in 1:m){
+  mod_ci<-glm(formula(m3), family=family(m3), data=cbind(y[i], design))
+  pred<-predict(mod_ci, newdata=data.frame("x1"= '+',"x2"= '+',"x3"='+',"x4"='+'), type="link", se.fit=T)
+  conf_int_prof<-mypredict(mod_ci, new_data=data.frame("x1"= '+',"x2"= '+',"x3"='+',"x4"='+'), alpha=0.05)
+  conf_int_wald<-c(pred$fit-se*pred$se.fit, pred$fit+se*pred$se.fit)
+  test_proflik[i] <-ifelse(conf_int_prof[1]<=oldpred$fit & oldpred$fit<=conf_int_prof[2], 1, 0)
+  test_wald[i] <-ifelse(conf_int_wald[1]<=oldpred$fit & oldpred$fit<=conf_int_wald[2], 1, 0)
+}
+sum(test_proflik)/m
+sum(test_wald)/m
+
+
+#Poisson test 3 cauchy
+n<-10
+x_1 <- rcauchy(n)
+lam <- exp(x_1)
+y<-rep(NA, n) 
+for(i in 1:n)
+{y[i]<-rpois(n=1, lambda=lam[i])}
+name<-c("y", "x_1")
+dataset_pois<-as.data.frame(cbind(y,x_1), col.names=name)
+mod_pois <- glm(y~., data=dataset_pois, family=poisson)
+
+m<-50000
+alpha<-0.05
+se<-qnorm(1-alpha/2)
+design<-subset(dataset_pois, select=-1)
+y<-simulate(mod_pois, nsim=m)
+colnames(y)<-rep("y", m)
+test_proflik<-rep(NA, m)
+test_wald<-rep(NA,m)
+oldpred<-predict(mod_pois, newdata=data.frame(x_1=4), type="link", se.fit=T)
+for (i in 1:m){
+  mod_ci<-glm(formula(mod_pois), family=family(mod_pois), data=cbind(y[i],design))
+  pred<-predict(mod_ci, newdata=data.frame(x_1=4), type="link", se.fit=T)
+  conf_int_prof<-mypredict(mod_ci, new_data=data.frame(x_1=4), alpha=0.05)
+  conf_int_wald<-c(pred$fit-se*pred$se.fit, pred$fit+se*pred$se.fit)
+  test_proflik[i] <-ifelse(conf_int_prof[1]<=oldpred$fit & oldpred$fit<=conf_int_prof[2], 1, 0)
+  test_wald[i] <-ifelse(conf_int_wald[1]<=oldpred$fit & oldpred$fit<=conf_int_wald[2], 1, 0)
+}
+sum(test_proflik)/m
+sum(test_wald)/m
+
+
+#Wald interval test
+y<-c(1,1,1,0,0,0,0,0)
+mod<-glm(y~., data=data.frame(y), family=binomial(link='logit'))
+confint(mod)
+
+
+# Manuell test intercept-modell
+equation <- function(x){
+  k <- 3  # Antall enere ('suksesser') i y_vektor
+  n <- 8  # Lengde på y_vektor
+  result <- -k * log(n / (n - k)) + (n - k) * log(k / n) - k * log(1 / (1 + exp(-x))) - (n - k) * log(exp(-x)/ (1 + exp(-x))) - qchisq(1-alpha, 1)/2
+  return(result)
+}
+
+å<-seq(-5,5, by=0.1)
+æ<-lapply(å,equation)
+plot(å,æ)
+uniroot(equation, lower=-7, upper=0)
+uniroot(equation, lower=0, upper=7)
