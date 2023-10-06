@@ -359,22 +359,22 @@ sum(test_proflik)/m
 sum(test_wald)/m
 
 
-#Wald interval test
-y<-c(1,1,1,0,0,0,0,0)
-mod<-glm(y~., data=data.frame(y), family=binomial(link='logit'))
-confint(mod)
-
+# Wald interval test
 
 # Manuell test intercept-modell
+
 equation <- function(x){
   k <- 3  # Antall enere ('suksesser') i y_vektor
   n <- 8  # Lengde på y_vektor
-  result <- -k * log(n / (n - k)) + (n - k) * log(k / n) - k * log(1 / (1 + exp(-x))) - (n - k) * log(exp(-x)/ (1 + exp(-x))) - qchisq(1-alpha, 1)/2
+  loglik<-function(beta){return(k * beta - n * log(1 + exp(beta)))}
+  result <- loglik(x) - loglik(log(k/(n-k))) + qchisq(1-alpha, 1)/2
   return(result)
 }
 
-å<-seq(-5,5, by=0.1)
-æ<-lapply(å,equation)
-plot(å,æ)
-uniroot(equation, lower=-7, upper=0)
-uniroot(equation, lower=0, upper=7)
+y<-c(1,1,1,0,0,0,0,0)
+mod<-glm(y~., data=data.frame(y), family=binomial(link='logit'))
+confint(mod)
+uniroot(equation, lower=-10, upper=0)$root
+uniroot(equation, lower=0, upper=25)$root
+
+
