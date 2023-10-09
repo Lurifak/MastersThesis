@@ -362,19 +362,50 @@ sum(test_wald)/m
 # Wald interval test
 
 # Manuell test intercept-modell
+expit<-function(x){return(1/(1+exp(-x)))}
+
+logit<-function(x){return(log(x/(1-x)))}
+
+loglik<-function(beta){return(k * beta - n * log(1 + exp(beta)))}
 
 equation <- function(x){
-  k <- 3  # Antall enere ('suksesser') i y_vektor
-  n <- 8  # Lengde på y_vektor
-  loglik<-function(beta){return(k * beta - n * log(1 + exp(beta)))}
   result <- loglik(x) - loglik(log(k/(n-k))) + qchisq(1-alpha, 1)/2
   return(result)
+}
+
+equation1 <- function(n,k){
+  p_hat<-k/n
+  width <- (1/n) * qnorm(alpha/2) * sqrt(k * ((n - k) / n))
+  return(c(p_hat-width, p_hat+width))
 }
 
 y<-c(1,1,1,0,0,0,0,0)
 mod<-glm(y~., data=data.frame(y), family=binomial(link='logit'))
 confint(mod)
-uniroot(equation, lower=-10, upper=0)$root
-uniroot(equation, lower=0, upper=25)$root
+expit(uniroot(equation, lower=-10, upper=0)$root)
+expit(uniroot(equation, lower=0, upper=10)$root)
 
 
+
+n<-13
+k_obs<-rep(1:(n-1))
+k_obs
+p_lower<-rep(NA, n-1)
+p_upper<-rep(NA, n-1)
+k<-1
+for(i in 1:(n-1)){
+  p_lower[i]<-expit(uniroot(equation, lower=-10, upper=logit(k/n), extendInt="upX")$root)
+  p_upper[i]<-expit(uniroot(equation, lower=logit(k/n), upper=10, extendInt="downX")$root)
+  k<-k+1
+}
+
+x_wald<-rep(0:13, each=2)
+p_wald<-rep(NA, 2*n + 2)
+for(i in 0:n){
+  p_wald[2*i]<-equation1(n,i)[1]
+  p_wald[2*i + 1]<-equation1(n,i)[2]
+}
+plot(NULL, xlab="k", ylab="p_hat", main="n=13", ylim=c(0,1),xlim=c(0,13))
+points(x_wald, p_wald)
+points(k_obs, p_lower, col="red")
+points(k_obs, p_upper, col="red")
