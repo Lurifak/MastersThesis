@@ -394,21 +394,23 @@ for(i in 1:(n-1)){
   k<-k+1
 }
 
-x_wald<-rep(0:n, each=2)
-p_wald<-rep(NA, 2*n + 2)
-for(i in 0:n){
-  p_wald[2*i + 1]<-wald(n,i)[1]
-  p_wald[2*i + 2]<-wald(n,i)[2]
+x_wald<-rep(0:n)
+p_wald_lower<-rep(NA, (n-1))
+p_wald_upper<-rep(NA, (n-1))
+for(i in 1:(n-1)){
+  p_wald_upper[i]<-wald(n,i)[1]
+  p_wald_lower[i]<-wald(n,i)[2]
 }
 
-plot(NULL, xlab="k", ylab="p_hat", main="n=13, red=prof", ylim=c(-0.1,1.1),xlim=c(0,n))
-points(x_wald, p_wald) #Wald
+plot(NULL, xlab="k", ylab="p_hat", main="n=20, red=prof", ylim=c(-0.1,1.1),xlim=c(0,n))
+points(k_obs, p_wald_upper)
+points(k_obs, p_wald_lower)
 points(k_obs, p_lower, col="red") #Prof
 points(k_obs, p_upper, col="red")
 
 #Coverage test
 p<-5/13
-abline(h=5/13) #prof: observing 2 to 8 gives p in conf.int. Wald: 3 to 8 gives p in conf.int
+abline(h=p) #prof: observing 4 to 12 gives p in conf.int. Wald: 5 to 11 gives p in conf.int
 m<-10000000
 x<-rbinom(m, n, p)
 sum(ifelse((x>=4)&(x<=12), 1, 0))/m #Nominal coverage for prof
@@ -430,3 +432,18 @@ x<-rbinom(m, n, p)
 sum(ifelse((x>=1)&(x<=4), 1, 0))/m #Nominal coverage for prof
 sum(ifelse((x>=1)&(x<=5), 1, 0))/m #Nominal coverage for wald
 
+# plot of coverage for different values of p
+p_vals<-seq(0.01,1, by=0.01)
+wald_cov<-c()
+prof_cov<-c()
+for(j in 1:length(p_vals)){
+  a<-ifelse((p_lower<=p_vals[j]) & (p_upper>=p_vals[j]), 1, 0)
+  b<-ifelse((p_wald_lower<=p_vals[j]) & (p_wald_upper>=p_vals[j]), 1, 0)
+  dens<-dbinom(rep(0:n),n,p_vals[j])
+  prof_cov[j]<-sum(dens[a==1])
+  wald_cov[j]<-sum(dens[b==1])
+}
+
+plot(p_vals, prof_cov, col="red", main="exact coverage for each value of p, n=20, prof=red")
+points(p_vals, wald_cov)
+abline(h=0.95)
