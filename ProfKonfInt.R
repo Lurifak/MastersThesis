@@ -99,7 +99,13 @@ mypredict(mod_test_3, new_data=data.frame(student="Yes", balance=2000, income=40
 
 
 
+
+
 #Coverage for n=1000
+
+alpha<-0.05
+se<-qnorm(1-alpha/2)
+
 m<-1000
 design<-subset(dataset1, select=-1)
 y<-simulate(mod_test_1, nsim=m)
@@ -120,7 +126,7 @@ sum(test_wald)
 
 
 #Coverage for n=200
-m<-1000
+m<-100
 design<-subset(dataset2, select=-1)
 y<-simulate(mod_test_2, nsim=m)
 colnames(y)<-rep("default", m)
@@ -139,7 +145,7 @@ sum(test_proflik)
 sum(test_wald)
 
 #Coverage for n=50
-m<-1000
+m<-100
 design<-subset(dataset3, select=-1)
 y<-simulate(mod_test_3, nsim=m)
 colnames(y)<-rep("default", m)
@@ -170,7 +176,7 @@ mod_s_1000 <- glm(default~., family=binomial(link = "logit"), data=as.data.frame
 alpha<-0.1
 se<-qnorm(1-alpha/2)
 
-m<-10000
+m<-100
 design<-subset(dataset_s_1000, select=-1)
 y<-simulate(mod_s_1000, nsim=m)
 colnames(y)<-rep("default", m)
@@ -178,7 +184,7 @@ test_proflik<-rep(NA, m)
 test_wald<-rep(NA,m)
 oldpred<-predict(mod_s_1000, newdata=data.frame(balance=3000), type="link", se.fit=T) #p_0 roughly 0.995
 for (i in 1:m){
-  mod_ci<-glm(formula(mod_s), family=family(mod_s), data=cbind(y[i],design))
+  mod_ci<-glm(formula(mod_s_1000), family=family(mod_s_1000), data=cbind(y[i],design))
   pred<-predict(mod_ci, newdata=data.frame(balance=3000), type="link", se.fit=T)
   conf_int_prof<-mypredict(mod_ci, new_data=data.frame(balance=3000), alpha=0.1)
   conf_int_wald<-c(pred$fit-se*pred$se.fit, pred$fit+se*pred$se.fit)
@@ -191,10 +197,8 @@ sum(test_wald)
 #n=500
 dataset_s_500<-dataset_s[sample(10000, size=500, replace=F),]
 mod_s_500 <- glm(default~., family=binomial(link = "logit"), data=as.data.frame(dataset_s_500))
-alpha<-0.05
-se<-qnorm(1-alpha/2)
 
-m<-50000
+m<-100
 design<-subset(dataset_s_500, select=-1)
 y<-simulate(mod_s_500, nsim=m)
 colnames(y)<-rep("default", m)
@@ -202,7 +206,7 @@ test_proflik<-rep(NA, m)
 test_wald<-rep(NA,m)
 oldpred<-predict(mod_s_500, newdata=data.frame(balance=3000), type="link", se.fit=T)
 for (i in 1:m){
-  mod_ci<-glm(formula(mod_s), family=family(mod_s), data=cbind(y[i],design))
+  mod_ci<-glm(formula(mod_s_500), family=family(mod_s_500), data=cbind(y[i],design))
   pred<-predict(mod_ci, newdata=data.frame(balance=3000), type="link", se.fit=T)
   conf_int_prof<-mypredict(mod_ci, new_data=data.frame(balance=3000), alpha=0.05)
   conf_int_wald<-c(pred$fit-se*pred$se.fit, pred$fit+se*pred$se.fit)
@@ -219,7 +223,7 @@ mod_s_1000 <- glm(default~., family=binomial(link = "logit"), data=as.data.frame
 alpha<-0.05
 se<-qnorm(1-alpha/2)
 
-m<-50000
+m<-100
 design<-subset(dataset_s_1000, select=-1)
 y<-simulate(mod_s_1000, nsim=m)
 colnames(y)<-rep("default", m)
@@ -227,7 +231,7 @@ test_proflik<-rep(NA, m)
 test_wald<-rep(NA,m)
 oldpred<-predict(mod_s_1000, newdata=data.frame(balance=3000), type="link", se.fit=T)
 for (i in 1:m){
-  mod_ci<-glm(formula(mod_s_200), family=family(mod_s_200), data=cbind(y[i],design))
+  mod_ci<-glm(formula(mod_s_1000), family=family(mod_s_1000), data=cbind(y[i],design))
   pred<-predict(mod_ci, newdata=data.frame(balance=3000), type="link", se.fit=T)
   conf_int_prof<-mypredict(mod_ci, new_data=data.frame(balance=3000), alpha=0.05)
   conf_int_wald<-c(pred$fit-se*pred$se.fit, pred$fit+se*pred$se.fit)
@@ -248,7 +252,7 @@ name<-c("y", "x_1")
 dataset_pois<-as.data.frame(cbind(y,x_1), col.names=name)
 mod_pois <- glm(y~., data=dataset_pois, family=poisson)
 
-m<-50000
+m<-100
 alpha<-0.05
 se<-qnorm(1-alpha/2)
 design<-subset(dataset_pois, select=-1)
@@ -280,7 +284,7 @@ name<-c("y", "x_1")
 dataset_pois<-as.data.frame(cbind(y,x_1), col.names=name)
 mod_pois <- glm(y~., data=dataset_pois, family=poisson)
 
-m<-50000
+m<-100
 alpha<-0.05
 se<-qnorm(1-alpha/2)
 design<-subset(dataset_pois, select=-1)
@@ -306,7 +310,7 @@ data(wafer)
 m3 <- glm(formula = resist ~ x1 + x2 + x3 + x4,
                          family  = Gamma(link = "log"),
                          data    = wafer)
-m<-50000
+m<-100
 alpha<-0.05
 se<-qnorm(1-alpha/2)
 design<-subset(m3$model, select=-1)
@@ -338,7 +342,7 @@ name<-c("y", "x_1")
 dataset_pois<-as.data.frame(cbind(y,x_1), col.names=name)
 mod_pois <- glm(y~., data=dataset_pois, family=poisson)
 
-m<-50000
+m<-100
 alpha<-0.05
 se<-qnorm(1-alpha/2)
 design<-subset(dataset_pois, select=-1)
@@ -436,14 +440,17 @@ sum(ifelse((x>=1)&(x<=5), 1, 0))/m #Nominal coverage for wald
 p_vals<-seq(0.01,1, by=0.01)
 wald_cov<-c()
 prof_cov<-c()
+a<-c()
+b<-c()
 for(j in 1:length(p_vals)){
   a<-ifelse((p_lower<=p_vals[j]) & (p_upper>=p_vals[j]), 1, 0)
   b<-ifelse((p_wald_lower<=p_vals[j]) & (p_wald_upper>=p_vals[j]), 1, 0)
-  dens<-dbinom(rep(0:n),n,p_vals[j])
+  dens<-dbinom(rep(1:(n-1)),n,p_vals[j])
   prof_cov[j]<-sum(dens[a==1])
   wald_cov[j]<-sum(dens[b==1])
 }
 
-plot(p_vals, prof_cov, col="red", main="exact coverage for each value of p, n=20, prof=red")
-points(p_vals, wald_cov)
+plot(NULL, xlim=c(0,1), ylim=c(0,1), main="exact coverage for each value of p, n=20, prof=red", ylab="coverage", xlab="p")
+lines(p_vals, wald_cov)
+lines(p_vals, prof_cov, col="red")
 abline(h=0.95)
