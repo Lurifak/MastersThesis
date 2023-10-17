@@ -437,7 +437,7 @@ sum(ifelse((x>=1)&(x<=4), 1, 0))/m #Nominal coverage for prof
 sum(ifelse((x>=1)&(x<=5), 1, 0))/m #Nominal coverage for wald
 
 # plot of coverage for different values of p
-p_vals<-seq(0.01,0.99, by=0.01)
+p_vals<-seq(0.01,0.99, by=0.005)
 wald_cov<-c()
 prof_cov<-c()
 a<-c()
