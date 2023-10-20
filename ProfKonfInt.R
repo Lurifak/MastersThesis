@@ -456,7 +456,6 @@ lines(p_vals, prof_cov, col="red")
 abline(h=0.95)
 
 #Haldane prior
-library(HDInterval)
 successes<-rep(0:n)
 alpha_parameter<-successes+1
 beta<-1+n-successes
@@ -464,7 +463,7 @@ beta<-1+n-successes
 lower_hald<-rep(NA, n+1)
 upper_hald<-rep(NA, n+1)
 for(i in 1:(n+1)){
-  interval<-as.vector(hdi(qbeta, 1-alpha, shape1=alpha_parameter[i], shape2=beta[i]))
+  interval<-c(qbeta(alpha/2, alpha_parameter[i], beta[i]), qbeta(1-alpha/2, alpha_parameter[i], beta[i]))
   lower_hald[i]<-interval[1]
   upper_hald[i]<-interval[2]
 }
@@ -479,10 +478,42 @@ for(j in 1:length(p_vals)){
   haldane_cov[j]<-sum(dens[e==1])
 }
 
+#Jeffrey prior
+successes_jef<-rep(0:n)
+alpha_jef<-successes_jef+1/2
+beta_jef<-1/2+n-successes_jef
+
+lower_jef<-rep(NA, n+1)
+upper_jef<-rep(NA, n+1)
+for(i in 1:(n+1)){
+  interval<-c(qbeta(alpha/2, alpha_jef[i], beta_jef[i]), qbeta(1-alpha/2, alpha_jef[i], beta_jef[i]))
+  lower_jef[i]<-interval[1]
+  upper_jef[i]<-interval[2]
+}
+
+plot(successes_jef, lower_jef, ylim=c(0,1))
+points(successes_jef, upper_jef)
+
+jef_cov<-c()
+for(j in 1:length(p_vals)){
+  e<-ifelse((lower_jef<=p_vals[j]) & (upper_jef>=p_vals[j]), 1, 0)
+  dens<-dbinom(rep(0:(n)),n,p_vals[j])
+  jef_cov[j]<-sum(dens[e==1])
+}
+
 plot(NULL, xlim=c(0,1), ylim=c(0,1), main="exact coverage for each value of p, n=20, prof=red", ylab="coverage", xlab="p")
 lines(p_vals, wald_cov)
 lines(p_vals, prof_cov, col="red")
 lines(p_vals, haldane_cov, col="green")
+lines(p_vals, jef_cov, col="orange")
 abline(h=0.95)
+colors <- c("black", "red", "green", "orange")
+legend("bottom", legend = c("Wald", "Profile", "Haldane", "Jeffreys"), fill = colors)
 
-# Jeffreys
+# Generalization
+
+
+
+
+
+
