@@ -64,14 +64,19 @@ alg<-function(datamat, nsamples){
   s11 <- sum((x[1,] - mean(x[1,]))^2)
   s22 <- sum((x[2,] - mean(x[2,]))^2)
   s12 <- sum( t(x[1,] - mean(x[1,])) %*% (x[2,] - mean(x[2,])) )
+  mean_1<-mean(x[1,])
+  mean_2<-mean(x[2,])
   S_mat <- matrix(data=c(s11,s12,s12,s22), nrow=2)
   
   samp_rho<-c()
   samp_sigma1<-c()
   samp_sigma2<-c()
-  m <- runif(nsamples)
+  samp_mu1<-c()
+  samp_mu2<-c()
+  m <- runif(10 * nsamples)
   
-  for(i in 1:nsamples){
+  z<-0
+  while(z<nsamples){
     prop <- riwish(n-1, S_mat) #Uses different parametrization than in Berger & Sun (input S instead of S^-1)
     rho <- prop[1,2]/(sqrt(prop[1,1]) * sqrt(prop[2,2]))
     rej_bound <- (1 - (rho^2))^(3/2)
@@ -79,22 +84,33 @@ alg<-function(datamat, nsamples){
       samp_rho<-append(samp_rho, rho)
       samp_sigma1<-append(samp_sigma1, sqrt(prop[1,1]))
       samp_sigma2<-append(samp_sigma2, sqrt(prop[2,2]))
+      z <- z+1
     }
   }
-  return(cbind(samp_rho, samp_sigma1, samp_sigma2))
+  
+  rhoest<-mean(samp_rho)
+  sigma1est<-mean(samp_sigma1)
+  sigma2est<-mean(samp_sigma2)
+  Sigma<-matrix(data=c(sigma1est^2, rhoest*sigma1est*sigma2est, rhoest*sigma1est*sigma2est, sigma2est^2), nrow=2)
+  mu<-rmvnorm(nsamples, c(mean_1, mean_2), sigma=Sigma/nsamples)
+  
+  return(cbind(samp_rho, samp_sigma1, samp_sigma2, mu[,1], mu[,2]))
 }
-
-# 
   
 covmat<-matrix(data=c(1, 0.5, 0.5, 1), nrow=2)
 data<-rmvnorm(10000, mean=rep(0,2), sigma=covmat)
-a<-alg(data, 100000) # simulates rho, sigma1, sigma2
+a<-alg(data, 100000) # simulates rho, sigma1, sigma2, mu1, mu2
 
 hist(a[,1]) #rho
-hist(a[,2], breaks=10000) #sigma1
-hist(a[,3], breaks=10000) #sigma2
+hist(a[,2], breaks=1000) #sigma1
+hist(a[,3], breaks=1000) #sigma2
+hist(a[,4], breaks=1000) #mu1
+hist(a[,5], breaks=1000) #mu2
 
+#Check
 mean(a[,1])
 mean(a[,2])
 mean(a[,3])
+mean(a[,4])
+mean(a[,5])
 
