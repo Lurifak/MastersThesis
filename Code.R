@@ -40,7 +40,7 @@ predictivesample <- function(theta) {
 xpredict <- t(apply(chain, 1, predictivesample))
 # Predictiv tetthet til x_3
 plot(xpredict[,1:2], pch=".", xlim=c(-14,15), ylim=c(-14,15))
-# Observersjonene
+# Observasjonene
 points(x[,1],x[,2],col="red",pch=16)
 # Sjekk av konsistens
 mean(xpredict[,1]<0)
@@ -56,17 +56,15 @@ hist.trunc(exp(chain[,3])^2, 10, .1)
 curve(dinvgamma(x, shape=1/2, scale=1/4), add=TRUE)
 
 
-#Berger Accept-Reject bivariate normal
-
+#Berger & sun 2008, Accept-Reject bivariate normal
 
 alg<-function(datamat, nsamples){
-  x <- datamat
+  x <- t(datamat)
   n <- ncol(x)
   s11 <- sum((x[1,] - mean(x[1,]))^2)
   s22 <- sum((x[2,] - mean(x[2,]))^2)
-  s12 <- sum( (x[1,] - mean(x[1,])) %*% t((x[2,] - mean(x[2,]))) )
+  s12 <- sum( t(x[1,] - mean(x[1,])) %*% (x[2,] - mean(x[2,])) )
   S_mat <- matrix(data=c(s11,s12,s12,s22), nrow=2)
-  S_inv <- solve(S_mat)
   
   samp_rho<-c()
   samp_sigma1<-c()
@@ -74,7 +72,7 @@ alg<-function(datamat, nsamples){
   m <- runif(nsamples)
   
   for(i in 1:nsamples){
-    prop <- riwish(n-1, S_inv)
+    prop <- riwish(n-1, S_mat) #Uses different parametrization than in Berger & Sun (input S instead of S^-1)
     rho <- prop[1,2]/(sqrt(prop[1,1]) * sqrt(prop[2,2]))
     rej_bound <- (1 - (rho^2))^(3/2)
     if(m[i] <= rej_bound){
@@ -86,5 +84,17 @@ alg<-function(datamat, nsamples){
   return(cbind(samp_rho, samp_sigma1, samp_sigma2))
 }
 
-alg(matrix(rnorm(6), nrow=2), 100000)
+# 
+  
+covmat<-matrix(data=c(1, 0.5, 0.5, 1), nrow=2)
+data<-rmvnorm(10000, mean=rep(0,2), sigma=covmat)
+a<-alg(data, 100000) # simulates rho, sigma1, sigma2
+
+hist(a[,1]) #rho
+hist(a[,2], breaks=10000) #sigma1
+hist(a[,3], breaks=10000) #sigma2
+
+mean(a[,1])
+mean(a[,2])
+mean(a[,3])
 
