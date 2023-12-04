@@ -73,14 +73,14 @@ alg<-function(datamat, nsamples){
   samp_sigma2<-c()
   samp_mu1<-c()
   samp_mu2<-c()
-  m <- runif(10 * nsamples)
   
   z<-0
   while(z<nsamples){
     prop <- riwish(n-1, S_mat) #Uses different parametrization than in Berger & Sun (input S instead of S^-1)
     rho <- prop[1,2]/(sqrt(prop[1,1]) * sqrt(prop[2,2]))
     rej_bound <- (1 - (rho^2))^(3/2)
-    if(m[i] <= rej_bound){
+    m<-runif(1)
+    if(m <= rej_bound){
       samp_rho<-append(samp_rho, rho)
       samp_sigma1<-append(samp_sigma1, sqrt(prop[1,1]))
       samp_sigma2<-append(samp_sigma2, sqrt(prop[2,2]))
@@ -96,10 +96,9 @@ alg<-function(datamat, nsamples){
   
   return(cbind(samp_rho, samp_sigma1, samp_sigma2, mu[,1], mu[,2]))
 }
-  
-covmat<-matrix(data=c(1, 0.5, 0.5, 1), nrow=2)
-data<-rmvnorm(10000, mean=rep(0,2), sigma=covmat)
-a<-alg(data, 100000) # simulates rho, sigma1, sigma2, mu1, mu2
+n<-10000
+data<-rbind(c(0,0),c(1,1),c(2,4))
+a<-alg(data, n) # simulates rho, sigma1, sigma2, mu1, mu2
 
 hist(a[,1]) #rho
 hist(a[,2], breaks=1000) #sigma1
@@ -114,3 +113,16 @@ mean(a[,3])
 mean(a[,4])
 mean(a[,5])
 
+#Simulating sample from predictive distribution
+
+mean_y<-mean(data[,1])
+mean_x<-mean(data[,2])
+sigma_sq<-a[2]^2 * (1-a[1]^2)
+beta_2<-a[1]*a[2]*a[3]/(a[3]^2)
+beta_1<-mean_y-beta_2*mean_x
+
+predsamp<-function(theta, data){
+  rmvnorm(n, beta_1 + beta_2 * data[,2], sigma_sq)
+}
+
+plot()
