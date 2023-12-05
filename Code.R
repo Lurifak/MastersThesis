@@ -96,8 +96,8 @@ alg<-function(datamat, nsamples){
   
   return(cbind(samp_rho, samp_sigma1, samp_sigma2, mu[,1], mu[,2]))
 }
-n<-10000
-data<-rbind(c(0,0),c(1,1),c(2,4))
+n<-100000
+data<-rbind(c(0,-1),c(0,1),c(1,0),c(-1,0))
 a<-alg(data, n) # simulates rho, sigma1, sigma2, mu1, mu2
 
 hist(a[,1]) #rho
@@ -113,16 +113,29 @@ mean(a[,3])
 mean(a[,4])
 mean(a[,5])
 
-#Simulating sample from predictive distribution
-
-mean_y<-mean(data[,1])
-mean_x<-mean(data[,2])
-sigma_sq<-a[2]^2 * (1-a[1]^2)
-beta_2<-a[1]*a[2]*a[3]/(a[3]^2)
-beta_1<-mean_y-beta_2*mean_x
-
-predsamp<-function(theta, data){
-  rmvnorm(n, beta_1 + beta_2 * data[,2], sigma_sq)
+#Simulating sample from predictive distribution (not yet reparametrized)
+predsamp<-function(theta){
+  var_11<-theta[2]^2  
+  var_21<-theta[1]*theta[2]*theta[3]
+  var_22<-theta[3]^2
+  Sigma<-matrix(data=c(var_11,var_21,var_21,var_22), nrow=2)
+  rmvnorm(1, c(theta[4], theta[5]), sigma=Sigma)
 }
 
-plot()
+#Prediktiv tetthet
+b<-t(apply(a, 1, FUN=predsamp))
+plot(b[,1], b[,2], xlab="x", ylab="y", ylim=c(-20, 20), xlim=c(-20, 20))
+square<-cbind(c(1,-1,0,0), c(0,0,1,-1))
+points(square, col="red")
+
+#Sjekk av y-verdier
+mean((b[,2]>=-1))
+mean((b[,2]>=0))
+mean((b[,2]>=1))
+
+
+#generell sjekk om innenfor kvadratet utspennet av de 4 punktene
+cond<-((b[,1]>=-1) & (b[,1]<=1) & (b[,2]>=-1) & (b[,2]<=1))
+mean(b[cond])
+
+       
