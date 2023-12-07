@@ -96,6 +96,7 @@ alg<-function(datamat, nsamples){
   
   return(cbind(samp_rho, samp_sigma1, samp_sigma2, mu[,1], mu[,2]))
 }
+
 n<-100000
 data<-rbind(c(0,-1),c(0,1),c(1,0),c(-1,0))
 a<-alg(data, n) # simulates rho, sigma1, sigma2, mu1, mu2
