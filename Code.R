@@ -57,7 +57,6 @@ curve(dinvgamma(x, shape=1/2, scale=1/4), add=TRUE)
 
 
 #Berger & sun 2008, Accept-Reject bivariate normal
-
 alg<-function(datamat, nsamples){
   x <- t(datamat)
   n <- ncol(x)
@@ -97,8 +96,8 @@ alg<-function(datamat, nsamples){
   return(cbind(samp_rho, samp_sigma1, samp_sigma2, mu[,1], mu[,2]))
 }
 
-n<-100000
-data<-rbind(c(0,-1),c(0,1),c(1,0),c(-1,0))
+n<-10000
+data<-rmvnorm(3, mean=rep(0, 2), sigma=matrix(data=c(1,0.5,0.5,1), nrow=2))
 a<-alg(data, n) # simulates rho, sigma1, sigma2, mu1, mu2
 
 hist(a[,1]) #rho
@@ -107,7 +106,7 @@ hist(a[,3], breaks=1000) #sigma2
 hist(a[,4], breaks=1000) #mu1
 hist(a[,5], breaks=1000) #mu2
 
-#Check
+#Check means
 mean(a[,1])
 mean(a[,2])
 mean(a[,3])
@@ -115,12 +114,13 @@ mean(a[,4])
 mean(a[,5])
 
 #Simulating sample from predictive distribution (not yet reparametrized)
+predsims<-10000
 predsamp<-function(theta){
   var_11<-theta[2]^2  
   var_21<-theta[1]*theta[2]*theta[3]
   var_22<-theta[3]^2
   Sigma<-matrix(data=c(var_11,var_21,var_21,var_22), nrow=2)
-  rmvnorm(1, c(theta[4], theta[5]), sigma=Sigma)
+  rmvnorm(predsims, c(theta[4], theta[5]), sigma=Sigma)
 }
 
 #Prediktiv tetthet
@@ -129,14 +129,13 @@ plot(b[,1], b[,2], xlab="x", ylab="y", ylim=c(-20, 20), xlim=c(-20, 20))
 square<-cbind(c(1,-1,0,0), c(0,0,1,-1))
 points(square, col="red")
 
-#Sjekk av y-verdier
-mean((b[,2]>=-1))
-mean((b[,2]>=0))
-mean((b[,2]>=1))
+sorted1<-sort(data[,1], decreasing=TRUE)
+sorted2<-sort(data[,2], decreasing=TRUE)
 
+mean(ifelse(b[,1]>sorted1[1], 1, 0))
+mean(ifelse(b[,1]>sorted1[2], 1, 0))
+mean(ifelse(b[,1]>sorted1[3], 1, 0))
 
-#generell sjekk om innenfor kvadratet utspennet av de 4 punktene
-cond<-((b[,1]>=-1) & (b[,1]<=1) & (b[,2]>=-1) & (b[,2]<=1))
-mean(b[cond])
-
-       
+mean(ifelse(b[,2]>sorted2[1], 1, 0))
+mean(ifelse(b[,2]>sorted1[2], 1, 0))
+mean(ifelse(b[,2]>sorted1[3], 1, 0))
