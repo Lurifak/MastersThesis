@@ -97,7 +97,8 @@ alg<-function(datamat, nsamples){
 }
 
 n<-10000
-data<-rmvnorm(3, mean=rep(0, 2), sigma=matrix(data=c(1,0.5,0.5,1), nrow=2))
+#data<-rmvnorm(3, mean=rep(0, 2), sigma=matrix(data=c(1,0.5,0.5,1), nrow=2))
+data<-rbind(c(0,0), c(1,2), c(2,1))
 a<-alg(data, n) # simulates rho, sigma1, sigma2, mu1, mu2
 
 hist(a[,1]) #rho
