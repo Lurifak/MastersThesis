@@ -98,8 +98,10 @@ alg<-function(datamat, nsamples){
 
 n<-10000
 #data<-rmvnorm(3, mean=rep(0, 2), sigma=matrix(data=c(1,0.5,0.5,1), nrow=2))
-data<-rbind(c(0,0), c(1,2), c(2,1))
+data<-rmvnorm(3, mean=meanvec, sigma=Sigma)
 a<-alg(data, n) # simulates rho, sigma1, sigma2, mu1, mu2
+plot(data, col="red")
+
 
 hist(a[,1]) #rho
 hist(a[,2], breaks=1000) #sigma1
@@ -127,8 +129,72 @@ predsamp<-function(theta){
 #Prediktiv tetthet
 b<-t(apply(a, 1, FUN=predsamp))
 plot(b[,1], b[,2], xlab="x", ylab="y", ylim=c(-20, 20), xlim=c(-20, 20))
-square<-cbind(c(1,-1,0,0), c(0,0,1,-1))
-points(square, col="red")
+points(data, col="red")
+
+sorted1<-sort(data[,1], decreasing=TRUE)
+sorted2<-sort(data[,2], decreasing=TRUE)
+
+mean(ifelse(b[,1]>sorted1[1], 1, 0))
+mean(ifelse(b[,1]>sorted1[2], 1, 0))
+mean(ifelse(b[,1]>sorted1[3], 1, 0))
+mean(ifelse(b[,1]>sorted1[4], 1, 0))
+
+mean(ifelse(b[,2]>sorted2[1], 1, 0))
+mean(ifelse(b[,2]>sorted2[2], 1, 0))
+mean(ifelse(b[,2]>sorted2[3], 1, 0))
+mean(ifelse(b[,2]>sorted2[4], 1, 0))
+
+#New try sampling only rho
+
+alg1<-function(datamat, nsamples){
+  x <- t(datamat)
+  n <- ncol(x)
+  s11 <- sum((x[1,] - mean(x[1,]))^2)
+  s22 <- sum((x[2,] - mean(x[2,]))^2)
+  s12 <- sum( t(x[1,] - mean(x[1,])) %*% (x[2,] - mean(x[2,])) )
+  mean_1<-mean(x[1,])
+  mean_2<-mean(x[2,])
+  S_mat <- matrix(data=c(s11,s12,s12,s22), nrow=2)
+  
+  samp_rho<-c()
+  
+  z<-0
+  while(z<nsamples){
+    prop <- riwish(n-1, S_mat) #Uses different parametrization than in Berger & Sun (input S instead of S^-1)
+    rho <- prop[1,2]/(sqrt(prop[1,1]) * sqrt(prop[2,2]))
+    rej_bound <- (1 - (rho^2))^(3/2)
+    m<-runif(1)
+    if(m <= rej_bound){
+      samp_rho<-append(samp_rho, rho)
+      z <- z+1
+    }
+  }
+  return(samp_rho)
+}
+
+
+mean_1 <- 1
+mean_2 <- -1
+sigma_1 <- 1
+sigma_2 <- 1
+rho <- 0.5
+
+meanvec<-c(mean_1, mean_2)
+Sigma <- matrix(data=c(sigma_1,sigma_1*sigma_2*rho,sigma_1*sigma_2*rho,sigma_2), nrow=2)
+
+
+n<-10000
+data<-rmvnorm(9, mean=meanvec, sigma=Sigma)
+a<-alg1(data, n) # simulates rho, sigma1, sigma2, mu1, mu2
+plot(data, col="red")
+
+predsims1<-10000
+predsamp1<-function(rho1){
+  Sigma1 <- matrix(data=c(sigma_1,sigma_1*sigma_2*rho1,sigma_1*sigma_2*rho1,sigma_2), nrow=2)
+  rmvnorm(predsims1, c(mean_1, mean_2), sigma=Sigma1)
+}
+
+b<-t(apply(as.matrix(a), 1, FUN=predsamp1))
 
 sorted1<-sort(data[,1], decreasing=TRUE)
 sorted2<-sort(data[,2], decreasing=TRUE)
@@ -138,5 +204,74 @@ mean(ifelse(b[,1]>sorted1[2], 1, 0))
 mean(ifelse(b[,1]>sorted1[3], 1, 0))
 
 mean(ifelse(b[,2]>sorted2[1], 1, 0))
-mean(ifelse(b[,2]>sorted1[2], 1, 0))
-mean(ifelse(b[,2]>sorted1[3], 1, 0))
+mean(ifelse(b[,2]>sorted2[2], 1, 0))
+mean(ifelse(b[,2]>sorted2[3], 1, 0))
+
+#Sample rho and other parameters
+n<-1000
+holder <- rlogis(n,0,1) #prior from berger sun
+rho <- 2*plogis(holder)-1
+hist(rho)
+
+mu_1 <- 1 
+mu_2 <- -1
+sigma_1 <- 1
+sigma_2 <- 1
+
+#Sampling data
+
+meanvec<-c(mu_1, mu_2)
+m<-5
+x_1<-c()
+x_2<-c()
+
+for(i in 1:n){
+  Sigma <- matrix(data=c(sigma_1^2,sigma_1*sigma_2*rho[i],sigma_1*sigma_2*rho[i],sigma_2^2), nrow=2)
+  a <- rmvnorm(m, mean=meanvec, sigma=Sigma)
+  x_1 <- append(a[,1], x_1)
+  x_2 <- append(a[,2], x_2)
+}
+
+x <- cbind(x_1, x_2)
+x
+
+a_1<-0
+a_2<-0
+a_3<-0
+b_1<-0
+b_2<-0
+b_3<-0
+
+predsims<-200
+
+for (i in 1:(floor(n/m))){
+  newdata<-x[i:(i+m-1),]
+  wadup<-alg(newdata,200)
+  sims<-t(apply(as.matrix(wadup), 1, FUN=predsamp))
+  
+  sorted_1<-sort(newdata[,1], decreasing=TRUE)
+  sorted_2<-sort(newdata[,2], decreasing=TRUE)
+  
+  a_1 <- a_1 + sum(ifelse(sims[,1]>sorted_1[1], 1, 0))
+  a_2 <- a_2 + sum(ifelse(sims[,1]>sorted_1[2], 1, 0))
+  a_3 <- a_3 + sum(ifelse(sims[,1]>sorted_1[3], 1, 0))
+  b_1 <- b_1 + sum(ifelse(sims[,2]>sorted_2[1], 1, 0))
+  b_2 <- b_2 + sum(ifelse(sims[,2]>sorted_2[2], 1, 0))
+  b_3 <- b_3 + sum(ifelse(sims[,2]>sorted_2[3], 1, 0))
+}
+
+i<-a_1
+a_2
+a_3
+b_1
+b_2
+b_3
+
+test<-alg(x, 1000)
+test
+
+
+predsims<-10000
+sims<-t(apply(as.matrix(test), 1, FUN=predsamp))
+
+
