@@ -208,7 +208,7 @@ mean(ifelse(b[,2]>sorted2[2], 1, 0))
 mean(ifelse(b[,2]>sorted2[3], 1, 0))
 
 #Sample rho and other parameters
-n<-2000
+n<-6000
 holder <- rlogis(n,0,1) #prior from berger sun
 rho <- 2*plogis(holder)-1
 hist(rho)
@@ -221,7 +221,7 @@ sigma_2 <- 1
 #Sampling data
 
 meanvec<-c(mu_1, mu_2)
-m<-5
+m<-4
 x_1<-c()
 x_2<-c()
 
@@ -273,6 +273,7 @@ for (i in 1:(it)){
 
 tot_comb<-it*parasims*predsims
 c(a_1, a_2, a_3, a_4, a_5, b_1, b_2, b_3, b_4, b_5)/tot_comb
+c(1/6, 2/6, 3/6, 4/6, 5/6)
 
 test<-alg(x, 1000)
 test
