@@ -208,13 +208,13 @@ mean(ifelse(b[,2]>sorted2[2], 1, 0))
 mean(ifelse(b[,2]>sorted2[3], 1, 0))
 
 #Sample rho and other parameters
-n<-1000
+n<-2000
 holder <- rlogis(n,0,1) #prior from berger sun
 rho <- 2*plogis(holder)-1
 hist(rho)
 
-mu_1 <- 1 
-mu_2 <- -1
+mu_1 <- 2
+mu_2 <- -2
 sigma_1 <- 1
 sigma_2 <- 1
 
@@ -238,34 +238,41 @@ x
 a_1<-0
 a_2<-0
 a_3<-0
+a_4<-0
+a_5<-0
 b_1<-0
 b_2<-0
 b_3<-0
+b_4<-0
+b_5<-0
 
+parasims<-200
 predsims<-200
+it<-floor(n/m)
 
-for (i in 1:(floor(n/m))){
+for (i in 1:(it)){
   newdata<-x[i:(i+m-1),]
-  wadup<-alg(newdata,200)
-  sims<-t(apply(as.matrix(wadup), 1, FUN=predsamp))
+  wadup<-alg(newdata,parasims)
+  sims<-apply(as.matrix(wadup), 1, FUN=predsamp)
   
   sorted_1<-sort(newdata[,1], decreasing=TRUE)
   sorted_2<-sort(newdata[,2], decreasing=TRUE)
   
-  a_1 <- a_1 + sum(ifelse(sims[,1]>sorted_1[1], 1, 0))
-  a_2 <- a_2 + sum(ifelse(sims[,1]>sorted_1[2], 1, 0))
-  a_3 <- a_3 + sum(ifelse(sims[,1]>sorted_1[3], 1, 0))
-  b_1 <- b_1 + sum(ifelse(sims[,2]>sorted_2[1], 1, 0))
-  b_2 <- b_2 + sum(ifelse(sims[,2]>sorted_2[2], 1, 0))
-  b_3 <- b_3 + sum(ifelse(sims[,2]>sorted_2[3], 1, 0))
+  a_1 <- a_1 + sum(ifelse(sims[1:predsims,]>sorted_1[1], 1, 0))
+  a_2 <- a_2 + sum(ifelse(sims[1:predsims,]>sorted_1[2], 1, 0))
+  a_3 <- a_3 + sum(ifelse(sims[1:predsims,]>sorted_1[3], 1, 0))
+  a_4 <- a_4 + sum(ifelse(sims[1:predsims,]>sorted_1[4], 1, 0))
+  a_5 <- a_5 + sum(ifelse(sims[1:predsims,]>sorted_1[5], 1, 0))
+  
+  b_1 <- b_1 + sum(ifelse(sims[(predsims+1):(predsims*2),]>sorted_2[1], 1, 0))
+  b_2 <- b_2 + sum(ifelse(sims[(predsims+1):(predsims*2),]>sorted_2[2], 1, 0))
+  b_3 <- b_3 + sum(ifelse(sims[(predsims+1):(predsims*2),]>sorted_2[3], 1, 0))
+  b_4 <- b_4 + sum(ifelse(sims[(predsims+1):(predsims*2),]>sorted_2[4], 1, 0))
+  b_5 <- b_5 + sum(ifelse(sims[(predsims+1):(predsims*2),]>sorted_2[5], 1, 0))
 }
 
-i<-a_1
-a_2
-a_3
-b_1
-b_2
-b_3
+tot_comb<-it*parasims*predsims
+c(a_1, a_2, a_3, a_4, a_5, b_1, b_2, b_3, b_4, b_5)/tot_comb
 
 test<-alg(x, 1000)
 test
