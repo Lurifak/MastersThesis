@@ -208,9 +208,14 @@ mean(ifelse(b[,2]>sorted2[2], 1, 0))
 mean(ifelse(b[,2]>sorted2[3], 1, 0))
 
 #Sample rho and other parameters
-n<-6000
+n<-20000
 holder <- rlogis(n,0,1) #prior from berger sun
+
 rho <- 2*plogis(holder)-1
+rho[rho>0.99]
+
+#rho<-seq(from=-0.99, to=0.99, length.out=n)
+rho<-runif(n, min=-0.98, max=0.98)
 hist(rho)
 
 mu_1 <- 2
@@ -221,7 +226,7 @@ sigma_2 <- 1
 #Sampling data
 
 meanvec<-c(mu_1, mu_2)
-m<-4
+m<-5
 x_1<-c()
 x_2<-c()
 
@@ -233,7 +238,6 @@ for(i in 1:n){
 }
 
 x <- cbind(x_1, x_2)
-x
 
 a_1<-0
 a_2<-0
@@ -246,12 +250,12 @@ b_3<-0
 b_4<-0
 b_5<-0
 
-parasims<-200
-predsims<-200
+parasims<-300
+predsims<-300
 it<-floor(n/m)
 
 for (i in 1:(it)){
-  newdata<-x[i:(i+m-1),]
+  newdata<-x[((i-1)*m+1):(i*m),]
   wadup<-alg(newdata,parasims)
   sims<-apply(as.matrix(wadup), 1, FUN=predsamp)
   
@@ -269,17 +273,13 @@ for (i in 1:(it)){
   b_3 <- b_3 + sum(ifelse(sims[(predsims+1):(predsims*2),]>sorted_2[3], 1, 0))
   b_4 <- b_4 + sum(ifelse(sims[(predsims+1):(predsims*2),]>sorted_2[4], 1, 0))
   b_5 <- b_5 + sum(ifelse(sims[(predsims+1):(predsims*2),]>sorted_2[5], 1, 0))
+  
+  print(i)
 }
 
 tot_comb<-it*parasims*predsims
-c(a_1, a_2, a_3, a_4, a_5, b_1, b_2, b_3, b_4, b_5)/tot_comb
-c(1/6, 2/6, 3/6, 4/6, 5/6)
-
-test<-alg(x, 1000)
-test
-
-
-predsims<-10000
-sims<-t(apply(as.matrix(test), 1, FUN=predsamp))
+c(a_1, a_2, a_3, a_4, a_5)/tot_comb #amount of x_pred_n+1 above each observed x_i up to n
+c(b_1, b_2, b_3, b_4, b_5)/tot_comb #amount of y_pred_n+1 above each observed y_i up to n
+seq(from=1/(m+1), to=m/(m+1), by=1/(m+1)) #Expected under 
 
 
