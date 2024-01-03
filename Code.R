@@ -1,5 +1,6 @@
 library(MCMCpack)
 library(mvtnorm)
+library(corpcor)
 
 # To observarsjoner fra regresjonsmodellen
 x <- rbind(c(0,0),c(1,1))
@@ -56,6 +57,8 @@ hist.trunc(exp(chain[,3])^2, 10, .1)
 curve(dinvgamma(x, shape=1/2, scale=1/4), add=TRUE)
 
 
+
+
 #Berger & sun 2008, Accept-Reject bivariate normal
 alg<-function(datamat, nsamples){
   x <- t(datamat)
@@ -96,9 +99,13 @@ alg<-function(datamat, nsamples){
   return(cbind(samp_rho, samp_sigma1, samp_sigma2, mu[,1], mu[,2]))
 }
 
-n<-10000
+n<-100000
 #data<-rmvnorm(3, mean=rep(0, 2), sigma=matrix(data=c(1,0.5,0.5,1), nrow=2))
-data<-rmvnorm(3, mean=meanvec, sigma=Sigma)
+Sigma<-matrix(data=c(10, 5, 5, 100), nrow=2)
+a<-sqrt(solve(matrix(data=c(Sigma[1,1], 0, 0, Sigma[2,2]), nrow=2)))
+cor_mat<-a %*% Sigma %*% a
+cor_mat
+data<-rmvnorm(n, mean=c(5,-5), sigma=Sigma)
 a<-alg(data, n) # simulates rho, sigma1, sigma2, mu1, mu2
 plot(data, col="red")
 
@@ -173,16 +180,6 @@ alg1<-function(datamat, nsamples){
 }
 
 
-mean_1 <- 1
-mean_2 <- -1
-sigma_1 <- 1
-sigma_2 <- 1
-rho <- 0.5
-
-meanvec<-c(mean_1, mean_2)
-Sigma <- matrix(data=c(sigma_1,sigma_1*sigma_2*rho,sigma_1*sigma_2*rho,sigma_2), nrow=2)
-
-
 n<-10000
 data<-rmvnorm(9, mean=meanvec, sigma=Sigma)
 a<-alg1(data, n) # simulates rho, sigma1, sigma2, mu1, mu2
@@ -208,20 +205,22 @@ mean(ifelse(b[,2]>sorted2[2], 1, 0))
 mean(ifelse(b[,2]>sorted2[3], 1, 0))
 
 #Sample rho and other parameters
-n<-20000
-holder <- rlogis(n,0,1) #prior from berger sun
+n<-10000
 
-rho <- 2*plogis(holder)-1
-rho[rho>0.99]
+#holder <- rlogis(n,0,1) #prior from berger sun
+#rho <- 2*plogis(holder)-1
+#rho[rho>0.99]
 
 #rho<-seq(from=-0.99, to=0.99, length.out=n)
-rho<-runif(n, min=-0.98, max=0.98)
+rho<-runif(n, min=-0.0000001, max=0.0000001)
+
+#rho<-seq(from=-0.99, to=0.99, length.out=n)
 hist(rho)
 
-mu_1 <- 2
-mu_2 <- -2
-sigma_1 <- 1
-sigma_2 <- 1
+mu_1 <- 0
+mu_2 <- 0
+sigma_1 <- 10
+sigma_2 <- 10
 
 #Sampling data
 
@@ -235,6 +234,7 @@ for(i in 1:n){
   a <- rmvnorm(m, mean=meanvec, sigma=Sigma)
   x_1 <- append(a[,1], x_1)
   x_2 <- append(a[,2], x_2)
+  print(i)
 }
 
 x <- cbind(x_1, x_2)
@@ -250,14 +250,14 @@ b_3<-0
 b_4<-0
 b_5<-0
 
-parasims<-300
-predsims<-300
+parasims<-40
+predsims<-1
 it<-floor(n/m)
 
 for (i in 1:(it)){
-  newdata<-x[((i-1)*m+1):(i*m),]
-  wadup<-alg(newdata,parasims)
-  sims<-apply(as.matrix(wadup), 1, FUN=predsamp)
+  newdata<-x[((i-1)*m+1):(i*m),] #Block of m of the data for each iteration
+  wadup<-alg(newdata,parasims) #simulating parameters for this block
+  sims<-apply(as.matrix(wadup), 1, FUN=predsamp) #simulating predictive samples for simulated parameters
   
   sorted_1<-sort(newdata[,1], decreasing=TRUE)
   sorted_2<-sort(newdata[,2], decreasing=TRUE)
@@ -280,6 +280,63 @@ for (i in 1:(it)){
 tot_comb<-it*parasims*predsims
 c(a_1, a_2, a_3, a_4, a_5)/tot_comb #amount of x_pred_n+1 above each observed x_i up to n
 c(b_1, b_2, b_3, b_4, b_5)/tot_comb #amount of y_pred_n+1 above each observed y_i up to n
-seq(from=1/(m+1), to=m/(m+1), by=1/(m+1)) #Expected under 
+seq(from=1/(m+1), to=m/(m+1), by=1/(m+1)) #Expected under t dist
+
+
+
+#General covariance matrix sampler with uniform marginals on partial corr's
+# Resources: Harry Joe 2005
+CovMatSamp<-function(nsamp, margvarvec){
+  mylist<- list()
+  i<-1
+  while(i<=nsamp){
+    ndim<-length(margvarvec)
+    entries<-(ndim)*(ndim-1)/2
+  
+    #Sampling uniformly the partial correlations off-diagonal
+    partialcorr<-runif(entries, min=-1, max=1)
+    
+    mat<- matrix(0, ndim, ndim)
+    mat[upper.tri(mat, diag=FALSE)]<-partialcorr
+    mat[lower.tri(mat, diag=FALSE)]<-partialcorr
+    mat[row(mat)==col(mat)] <- 1
+    pcormat<- -mat
+    
+    corrmat<- pcor2cor(pcormat)
+    eigenvals<-eigen(corrmat)$val
+    
+    if(sum((ifelse(eigenvals>0, 1, 0)))==ndim){
+      covmat<-as.matrix(diag(sqrt(margvarvec)) %*% corrmat %*% diag(sqrt(margvarvec)))
+      mylist[[i]] <- covmat
+      i <- i + 1
+    }
+  }
+  return(mylist)
+}
+
+#Using H. Joe (2006) notation
+UnifCovMatSamp<-function(nsamp, covvec){
+  d<-length(covvec)
+  cormat<-matrix(NA, nrow=d, ncol=d)
+  cormat[row(cormat)==col(cormat)]<-rep(1, d) #diagonal equal to 1
+  cormat[row(cormat)==1+col(cormat)]<-runif((d-1), min=-1, max=1) #sample (i, i-1) uniformly
+  cormat[row(cormat)+1==col(cormat)]<-cormat[row(cormat)==1+col(cormat)]
+  
+  for(j in 1:(d-2)){
+    for(k in (j+2):(d)){
+      print(c(j,k))
+      r_1<-cormat[j,(j+1):(j+k-1)]
+      r_3<-cormat[(j+k),(j+1):(j+k-1)]
+      R_j_jk<-cormat[(j:(j+k)),(j:(j+k))]
+      R_2 <- R_j_jk[(2:k-1), (2:k-1)]
+      R_2_inv <- solve(R_2)
+      D_jk_2 <- (1 - t(r_1) %*% R_2_inv %*% r_1) %*% (1 - t(r_3) %*% R_2_inv %*% r_3)
+      D_jk <- sqrt(D_jk_2)
+      cormat[j, (j+k)] <- t(r_1) %*% R_2_inv %*% r_3 + runif(1, min=-1, max=1) * D_jk
+      cormat[(j+k), j] <- cormat[j, (j+k)]
+    }
+  }
+}
+
 
 
