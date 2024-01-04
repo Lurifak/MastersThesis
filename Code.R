@@ -317,26 +317,36 @@ CovMatSamp<-function(nsamp, margvarvec){
 #Using H. Joe (2006) notation
 UnifCovMatSamp<-function(nsamp, covvec){
   d<-length(covvec)
-  cormat<-matrix(NA, nrow=d, ncol=d)
-  cormat[row(cormat)==col(cormat)]<-rep(1, d) #diagonal equal to 1
-  cormat[row(cormat)==1+col(cormat)]<-runif((d-1), min=-1, max=1) #sample (i, i-1) uniformly
-  cormat[row(cormat)+1==col(cormat)]<-cormat[row(cormat)==1+col(cormat)]
+  mylist<- list()
+  i<-1
   
-  for(j in 1:(d-2)){
-    for(k in (j+2):(d)){
-      print(c(j,k))
-      r_1<-cormat[j,(j+1):(j+k-1)]
-      r_3<-cormat[(j+k),(j+1):(j+k-1)]
-      R_j_jk<-cormat[(j:(j+k)),(j:(j+k))]
-      R_2 <- R_j_jk[(2:k-1), (2:k-1)]
-      R_2_inv <- solve(R_2)
-      D_jk_2 <- (1 - t(r_1) %*% R_2_inv %*% r_1) %*% (1 - t(r_3) %*% R_2_inv %*% r_3)
-      D_jk <- sqrt(D_jk_2)
-      cormat[j, (j+k)] <- t(r_1) %*% R_2_inv %*% r_3 + runif(1, min=-1, max=1) * D_jk
-      cormat[(j+k), j] <- cormat[j, (j+k)]
+  while(i<=nsamp){
+    cormat<-matrix(NA, nrow=d, ncol=d)
+    cormat[row(cormat)==col(cormat)]<-rep(1, d) #diagonal equal to 1
+    cormat[row(cormat)==1+col(cormat)]<-runif((d-1), min=-1, max=1) #sample (i, i-1) uniformly
+    cormat[row(cormat)+1==col(cormat)]<-cormat[row(cormat)==1+col(cormat)]
+  
+    for(k in 2:(d-1)){
+      for(j in 1:(d-k)){
+        r_1<-cormat[j,(j+1):(j+k-1)]
+        r_3<-cormat[(j+k),(j+1):(j+k-1)]
+        R_j_jk<-cormat[(j:(j+k)),(j:(j+k))]
+        R_2 <- R_j_jk[(2:k-1), (2:k-1)]
+        R_2_inv <- solve(R_2)
+        D_jk_2 <- (1 - t(r_1) %*% R_2_inv %*% r_1) %*% (1 - t(r_3) %*% R_2_inv %*% r_3)
+        D_jk <- sqrt(abs(D_jk_2)) #Sometimes D_jk squared is negative (not possible), but will be rejected in space of positive definite matrices i think
+        cormat[j, (j+k)] <- t(r_1) %*% R_2_inv %*% r_3 + runif(1, min=-1, max=1) * D_jk
+        cormat[(j+k), j] <- cormat[j, (j+k)]
+      }
+    }
+    cond<-ifelse(eigen(cormat)$val>0, 1, 0)
+    if(sum(cond)==d){
+      mylist[[i]] <- cormat
+      i <- i + 1
     }
   }
+  return(mylist)
 }
 
-
+sum(UnifCovMatSamp(1000, c(1,1,1,1)))
 
