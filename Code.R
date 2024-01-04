@@ -319,7 +319,6 @@ UnifCovMatSamp<-function(nsamp, covvec){
   d<-length(covvec)
   mylist<- list()
   i<-1
-  
   while(i<=nsamp){
     cormat<-matrix(NA, nrow=d, ncol=d)
     cormat[row(cormat)==col(cormat)]<-rep(1, d) #diagonal equal to 1
@@ -348,5 +347,10 @@ UnifCovMatSamp<-function(nsamp, covvec){
   return(mylist)
 }
 
-sum(UnifCovMatSamp(1000, c(1,1,1,1)))
-
+#check of marginal distribution
+a<-UnifCovMatSamp(100000, c(1,1,1,1))
+b<-rep(NA, 100000)
+for(i in 1:100000){
+  b[i]<-a[[i]][1,2]
+}
+hist(b)
