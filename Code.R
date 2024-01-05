@@ -1,6 +1,7 @@
 library(MCMCpack)
 library(mvtnorm)
 library(corpcor)
+library(clusterGeneration)
 
 # To observarsjoner fra regresjonsmodellen
 x <- rbind(c(0,0),c(1,1))
@@ -151,61 +152,8 @@ mean(ifelse(b[,2]>sorted2[2], 1, 0))
 mean(ifelse(b[,2]>sorted2[3], 1, 0))
 mean(ifelse(b[,2]>sorted2[4], 1, 0))
 
-#New try sampling only rho
-
-alg1<-function(datamat, nsamples){
-  x <- t(datamat)
-  n <- ncol(x)
-  s11 <- sum((x[1,] - mean(x[1,]))^2)
-  s22 <- sum((x[2,] - mean(x[2,]))^2)
-  s12 <- sum( t(x[1,] - mean(x[1,])) %*% (x[2,] - mean(x[2,])) )
-  mean_1<-mean(x[1,])
-  mean_2<-mean(x[2,])
-  S_mat <- matrix(data=c(s11,s12,s12,s22), nrow=2)
-  
-  samp_rho<-c()
-  
-  z<-0
-  while(z<nsamples){
-    prop <- riwish(n-1, S_mat) #Uses different parametrization than in Berger & Sun (input S instead of S^-1)
-    rho <- prop[1,2]/(sqrt(prop[1,1]) * sqrt(prop[2,2]))
-    rej_bound <- (1 - (rho^2))^(3/2)
-    m<-runif(1)
-    if(m <= rej_bound){
-      samp_rho<-append(samp_rho, rho)
-      z <- z+1
-    }
-  }
-  return(samp_rho)
-}
-
-
-n<-10000
-data<-rmvnorm(9, mean=meanvec, sigma=Sigma)
-a<-alg1(data, n) # simulates rho, sigma1, sigma2, mu1, mu2
-plot(data, col="red")
-
-predsims1<-10000
-predsamp1<-function(rho1){
-  Sigma1 <- matrix(data=c(sigma_1,sigma_1*sigma_2*rho1,sigma_1*sigma_2*rho1,sigma_2), nrow=2)
-  rmvnorm(predsims1, c(mean_1, mean_2), sigma=Sigma1)
-}
-
-b<-t(apply(as.matrix(a), 1, FUN=predsamp1))
-
-sorted1<-sort(data[,1], decreasing=TRUE)
-sorted2<-sort(data[,2], decreasing=TRUE)
-
-mean(ifelse(b[,1]>sorted1[1], 1, 0))
-mean(ifelse(b[,1]>sorted1[2], 1, 0))
-mean(ifelse(b[,1]>sorted1[3], 1, 0))
-
-mean(ifelse(b[,2]>sorted2[1], 1, 0))
-mean(ifelse(b[,2]>sorted2[2], 1, 0))
-mean(ifelse(b[,2]>sorted2[3], 1, 0))
-
 #Sample rho and other parameters
-n<-10000
+n<-1000
 
 #holder <- rlogis(n,0,1) #prior from berger sun
 #rho <- 2*plogis(holder)-1
@@ -234,7 +182,6 @@ for(i in 1:n){
   a <- rmvnorm(m, mean=meanvec, sigma=Sigma)
   x_1 <- append(a[,1], x_1)
   x_2 <- append(a[,2], x_2)
-  print(i)
 }
 
 x <- cbind(x_1, x_2)
@@ -283,38 +230,8 @@ c(b_1, b_2, b_3, b_4, b_5)/tot_comb #amount of y_pred_n+1 above each observed y_
 seq(from=1/(m+1), to=m/(m+1), by=1/(m+1)) #Expected under t dist
 
 
-
-#General covariance matrix sampler with uniform marginals on partial corr's
-# Resources: Harry Joe 2005
-CovMatSamp<-function(nsamp, margvarvec){
-  mylist<- list()
-  i<-1
-  while(i<=nsamp){
-    ndim<-length(margvarvec)
-    entries<-(ndim)*(ndim-1)/2
-  
-    #Sampling uniformly the partial correlations off-diagonal
-    partialcorr<-runif(entries, min=-1, max=1)
-    
-    mat<- matrix(0, ndim, ndim)
-    mat[upper.tri(mat, diag=FALSE)]<-partialcorr
-    mat[lower.tri(mat, diag=FALSE)]<-partialcorr
-    mat[row(mat)==col(mat)] <- 1
-    pcormat<- -mat
-    
-    corrmat<- pcor2cor(pcormat)
-    eigenvals<-eigen(corrmat)$val
-    
-    if(sum((ifelse(eigenvals>0, 1, 0)))==ndim){
-      covmat<-as.matrix(diag(sqrt(margvarvec)) %*% corrmat %*% diag(sqrt(margvarvec)))
-      mylist[[i]] <- covmat
-      i <- i + 1
-    }
-  }
-  return(mylist)
-}
-
 #Using H. Joe (2006) notation
+# Incomplete, gives slightly different results than Joe's own library "clusterGeneration" with func rcorrmatrix
 UnifCovMatSamp<-function(nsamp, covvec){
   d<-length(covvec)
   mylist<- list()
@@ -333,12 +250,13 @@ UnifCovMatSamp<-function(nsamp, covvec){
         R_2 <- R_j_jk[(2:k-1), (2:k-1)]
         R_2_inv <- solve(R_2)
         D_jk_2 <- (1 - t(r_1) %*% R_2_inv %*% r_1) %*% (1 - t(r_3) %*% R_2_inv %*% r_3)
-        D_jk <- sqrt(abs(D_jk_2)) #Sometimes D_jk squared is negative (not possible), but will be rejected in space of positive definite matrices i think
+        D_jk <- sqrt(abs(D_jk_2)) 
+        #Sometimes D_jk squared is negative (not possible), but will be rejected in space of positive definite matrices i think
         cormat[j, (j+k)] <- t(r_1) %*% R_2_inv %*% r_3 + runif(1, min=-1, max=1) * D_jk
         cormat[(j+k), j] <- cormat[j, (j+k)]
       }
     }
-    cond<-ifelse(eigen(cormat)$val>0, 1, 0)
+    cond<-ifelse(eigen(cormat)$val>0, 1, 0) #Counting number of positive eigenvalues (=d <=> p. def.)
     if(sum(cond)==d){
       mylist[[i]] <- cormat
       i <- i + 1
@@ -347,10 +265,15 @@ UnifCovMatSamp<-function(nsamp, covvec){
   return(mylist)
 }
 
-#check of marginal distribution
-a<-UnifCovMatSamp(100000, c(1,1,1,1))
-b<-rep(NA, 100000)
-for(i in 1:100000){
-  b[i]<-a[[i]][1,2]
+#check of marginal distribution (self-built slightly wrong)
+a<-UnifCovMatSamp(10000, c(1,1,1,1,1))
+rowind<-4 #indexes
+colind<-5
+b<-rep(NA, 10000)
+d<-rep(NA, 10000)
+for(i in 1:10000){
+  b[i]<-a[[i]][colind,rowind]
+  d[i]<-rcorrmatrix(5, 1)[colind,rowind]
 }
 hist(b)
+hist(d)
