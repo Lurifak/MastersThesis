@@ -247,10 +247,10 @@ UnifCovMatSamp<-function(nsamp, covvec){
         r_1<-cormat[j,(j+1):(j+k-1)]
         r_3<-cormat[(j+k),(j+1):(j+k-1)]
         R_j_jk<-cormat[(j:(j+k)),(j:(j+k))]
-        R_2 <- R_j_jk[(2:k-1), (2:k-1)]
+        R_2 <- R_j_jk[2:(k), 2:(k)]
         R_2_inv <- solve(R_2)
         D_jk_2 <- (1 - t(r_1) %*% R_2_inv %*% r_1) %*% (1 - t(r_3) %*% R_2_inv %*% r_3)
-        D_jk <- sqrt(abs(D_jk_2)) 
+        D_jk <- sqrt(abs(D_jk_2))
         #Sometimes D_jk squared is negative (not possible), but will be rejected in space of positive definite matrices i think
         cormat[j, (j+k)] <- t(r_1) %*% R_2_inv %*% r_3 + runif(1, min=-1, max=1) * D_jk
         cormat[(j+k), j] <- cormat[j, (j+k)]
@@ -267,13 +267,12 @@ UnifCovMatSamp<-function(nsamp, covvec){
 
 #check of marginal distribution (self-built slightly wrong)
 a<-UnifCovMatSamp(10000, c(1,1,1,1,1))
-rowind<-4 #indexes
-colind<-5
+rowind<-3 #indexes
+colind<-2
 b<-rep(NA, 10000)
 d<-rep(NA, 10000)
 for(i in 1:10000){
   b[i]<-a[[i]][colind,rowind]
-  d[i]<-rcorrmatrix(5, 1)[colind,rowind]
+  d[i]<-rcorrmatrix(4, 0.00001)[colind,rowind]
 }
-hist(b)
 hist(d)
