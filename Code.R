@@ -236,10 +236,14 @@ UnifCovMatSamp<-function(nsamp, covvec){
   d<-length(covvec)
   mylist<- list()
   i<-1
+  param<-1+((d-2)/2) #parameter in beta distribution
   while(i<=nsamp){
     cormat<-matrix(NA, nrow=d, ncol=d)
     cormat[row(cormat)==col(cormat)]<-rep(1, d) #diagonal equal to 1
-    cormat[row(cormat)==1+col(cormat)]<-runif((d-1), min=-1, max=1) #sample (i, i-1) uniformly
+    initsamp<-2*rbeta(d-1, param, param) - 1 #changing support from (0,1) to (-1, 1)
+    cormat[row(cormat)==1+col(cormat)]<-initsamp
+    #cormat[row(cormat)==1+col(cormat)]<-runif((d-1), min=-1, max=1) #sample (i, i-1) uniformly
+    
     cormat[row(cormat)+1==col(cormat)]<-cormat[row(cormat)==1+col(cormat)]
   
     for(k in 2:(d-1)){
@@ -267,12 +271,58 @@ UnifCovMatSamp<-function(nsamp, covvec){
 
 #check of marginal distribution (self-built slightly wrong)
 a<-UnifCovMatSamp(10000, c(1,1,1,1,1))
-rowind<-3 #indexes
-colind<-2
+rowind<-1 #indexes
+colind<-5
 b<-rep(NA, 10000)
 d<-rep(NA, 10000)
 for(i in 1:10000){
   b[i]<-a[[i]][colind,rowind]
-  d[i]<-rcorrmatrix(4, 0.00001)[colind,rowind]
+  d[i]<-rcorrmatrix(5, 0.01)[colind,rowind]
 }
 hist(d)
+
+# Test of "the shape of partial correlation matrices" corollary 2 (artner, wellingerhof)
+corgen<-function(dim, nsamp){
+  mylist<-list()
+  i<-1
+  while(i<=nsamp){
+    samped<-runif((dim*(dim-1)/2), min=-1, max=1)
+    mat<- - diag(1, nrow=dim, ncol=dim)
+    mat[lower.tri(mat)==TRUE]<- samped
+    mat[upper.tri(mat)==TRUE] <- mat[lower.tri(mat)==TRUE] #partial correlation matrix constructed
+    
+    cormat<- - mat
+    cond<-ifelse(eigen(cormat)$val>0, 1, 0)
+    if(sum(cond)==dim){
+      mylist[[i]] <- cormat
+      i <- i + 1
+    }
+  }
+  return(mylist)
+}
+a<-corgen(3, 10000)
+b<-rep(NA, 10000)
+for(i in 1:10000){
+  b[i]<-a[[i]][2,3]
+}
+hist(b)
+
+
+#Jarle's code
+set.seed(1)
+n <- 5
+Sigma <- diag(n)
+partialcorr <- replicate(10000,{
+  repeat{
+    u <- runif(n*(n-1)/2, -1, 1)
+    Sigma[lower.tri(Sigma)] <- u
+    Sigma[upper.tri(Sigma)] <- t(Sigma)[upper.tri(Sigma)]
+    if (sum(eigen(Sigma)$val>0)==n)  
+      break()
+  }
+  P <- solve(Sigma)
+  D <- diag(1/sqrt(diag(P)))
+  (D %*% P %*% D)[lower.tri(P)]
+})
+
+hist(partialcorr[8,])
