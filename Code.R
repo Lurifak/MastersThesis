@@ -16,6 +16,7 @@ target <- function(theta, x, scale) {
   logLik <- dmvnorm(x, mu, Sigma, log=TRUE)
   sum(logLik) + logPrior
 }
+
 # Generisk Metropolis-Hastings
 s <- .4 # (scale til logistic prior til transformert rho)
 chain <- MCMCmetrop1R(target, theta.init=rep(0,5), x=x, mcmc=1e+6, thin=100, scale=s)
@@ -60,7 +61,7 @@ curve(dinvgamma(x, shape=1/2, scale=1/4), add=TRUE)
 
 
 
-#Berger & sun 2008, Accept-Reject bivariate normal
+#Berger & Sun 2008, Accept-Reject bivariate normal
 alg<-function(datamat, nsamples){
   x <- t(datamat)
   n <- ncol(x)
@@ -277,7 +278,7 @@ b<-rep(NA, 10000)
 d<-rep(NA, 10000)
 for(i in 1:10000){
   b[i]<-a[[i]][colind,rowind]
-  d[i]<-rcorrmatrix(5, 0.01)[colind,rowind]
+  d[i]<-rcorrmatrix(5, 1)[colind,rowind]
 }
 hist(d)
 
@@ -325,4 +326,46 @@ partialcorr <- replicate(10000,{
   (D %*% P %*% D)[lower.tri(P)]
 })
 
-hist(partialcorr[8,])
+toeplitz(c(-1,partialcorr[,1]))
+
+#General check of predictive distribution for >= 3 dimensions
+
+#1: Sample n priors
+n<-10000
+d<-3 #dimension
+
+muvec<-rep(0,d)
+sigmavec<-rep(1,d)
+
+Sigma <- diag(d)
+corr_from_pcor <- replicate(n,{
+  repeat{
+    u <- runif(d*(d-1)/2, -1, 1)
+    Sigma[lower.tri(Sigma)] <- u
+    Sigma[upper.tri(Sigma)] <- t(Sigma)[upper.tri(Sigma)]
+    if (sum(eigen(Sigma)$val>0)==d)  
+      break()
+  }
+  P <- solve(Sigma)
+  D <- diag(1/sqrt(diag(P)))
+  corr <- - (D %*% P %*% D)[lower.tri(P)]
+  # valid correlations from Artner (2022) "The space of partial correlation matrices" corollary 2
+  corr
+})
+
+x_1<-c()
+x_2<-c()
+x_3<-c()
+m<-4
+
+
+for(i in 1:n){
+  corrmat<- diag(1, nrow=d)
+  corrmat[lower.tri(corrmat)==TRUE]<-corr_from_pcor[,i]
+  corrmat[upper.tri(corrmat)==TRUE]<-corrmat[lower.tri(corrmat)==TRUE]
+  Sigma <- diag(sigmavec) %*% corrmat %*% diag(sigmavec)
+  a <- rmvnorm(m, mean=muvec, sigma=Sigma)
+  x_1 <- append(a[,1], x_1)
+  x_2 <- append(a[,2], x_2)
+  x_3 <- append(a[,3], x_3)
+}
