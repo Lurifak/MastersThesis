@@ -101,6 +101,14 @@ alg<-function(datamat, nsamples){
   return(cbind(samp_rho, samp_sigma1, samp_sigma2, mu[,1], mu[,2]))
 }
 
+predsamp<-function(theta){
+  var_11<-theta[2]^2  
+  var_21<-theta[1]*theta[2]*theta[3]
+  var_22<-theta[3]^2
+  Sigma<-matrix(data=c(var_11,var_21,var_21,var_22), nrow=2)
+  rmvnorm(predsims, c(theta[4], theta[5]), sigma=Sigma)
+}
+
 n<-100000
 #data<-rmvnorm(3, mean=rep(0, 2), sigma=matrix(data=c(1,0.5,0.5,1), nrow=2))
 Sigma<-matrix(data=c(10, 5, 5, 100), nrow=2)
@@ -337,27 +345,32 @@ d<-3 #dimension
 muvec<-rep(0,d)
 sigmavec<-rep(1,d)
 
-Sigma <- diag(d)
+Sigma <- - diag(d)
 corr_from_pcor <- replicate(n,{
   repeat{
     u <- runif(d*(d-1)/2, -1, 1)
     Sigma[lower.tri(Sigma)] <- u
     Sigma[upper.tri(Sigma)] <- t(Sigma)[upper.tri(Sigma)]
-    if (sum(eigen(Sigma)$val>0)==d)  
+    if ((sum(eigen(Sigma)$val<0)==d)) 
       break()
   }
-  P <- solve(Sigma)
-  D <- diag(1/sqrt(diag(P)))
-  corr <- - (D %*% P %*% D)[lower.tri(P)]
-  # valid correlations from Artner (2022) "The space of partial correlation matrices" corollary 2
-  corr
+  S <- - Sigma
+  S_inv <- solve(S)
+  D_S_inv <- solve(diag(sqrt(diag(S_inv))))
+  (D_S_inv %*% S_inv %*% D_S_inv)[lower.tri(S_inv)==TRUE]
 })
+
+corr_from_pcor[,1]
+
 
 x_1<-c()
 x_2<-c()
 x_3<-c()
 m<-4
 
+
+
+#2 Sample Data given priors
 
 for(i in 1:n){
   corrmat<- diag(1, nrow=d)
