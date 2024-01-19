@@ -238,104 +238,6 @@ c(a_1, a_2, a_3, a_4, a_5)/tot_comb #amount of x_pred_n+1 above each observed x_
 c(b_1, b_2, b_3, b_4, b_5)/tot_comb #amount of y_pred_n+1 above each observed y_i up to n
 seq(from=1/(m+1), to=m/(m+1), by=1/(m+1)) #Expected under t dist
 
-
-#Using H. Joe (2006) notation
-# Incomplete, gives slightly different results than Joe's own library "clusterGeneration" with func rcorrmatrix
-UnifCovMatSamp<-function(nsamp, covvec){
-  d<-length(covvec)
-  mylist<- list()
-  i<-1
-  param<-1+((d-2)/2) #parameter in beta distribution
-  while(i<=nsamp){
-    cormat<-matrix(NA, nrow=d, ncol=d)
-    cormat[row(cormat)==col(cormat)]<-rep(1, d) #diagonal equal to 1
-    initsamp<-2*rbeta(d-1, param, param) - 1 #changing support from (0,1) to (-1, 1)
-    cormat[row(cormat)==1+col(cormat)]<-initsamp
-    #cormat[row(cormat)==1+col(cormat)]<-runif((d-1), min=-1, max=1) #sample (i, i-1) uniformly
-    
-    cormat[row(cormat)+1==col(cormat)]<-cormat[row(cormat)==1+col(cormat)]
-  
-    for(k in 2:(d-1)){
-      for(j in 1:(d-k)){
-        r_1<-cormat[j,(j+1):(j+k-1)]
-        r_3<-cormat[(j+k),(j+1):(j+k-1)]
-        R_j_jk<-cormat[(j:(j+k)),(j:(j+k))]
-        R_2 <- R_j_jk[2:(k), 2:(k)]
-        R_2_inv <- solve(R_2)
-        D_jk_2 <- (1 - t(r_1) %*% R_2_inv %*% r_1) %*% (1 - t(r_3) %*% R_2_inv %*% r_3)
-        D_jk <- sqrt(abs(D_jk_2))
-        #Sometimes D_jk squared is negative (not possible), but will be rejected in space of positive definite matrices i think
-        cormat[j, (j+k)] <- t(r_1) %*% R_2_inv %*% r_3 + runif(1, min=-1, max=1) * D_jk
-        cormat[(j+k), j] <- cormat[j, (j+k)]
-      }
-    }
-    cond<-ifelse(eigen(cormat)$val>0, 1, 0) #Counting number of positive eigenvalues (=d <=> p. def.)
-    if(sum(cond)==d){
-      mylist[[i]] <- cormat
-      i <- i + 1
-    }
-  }
-  return(mylist)
-}
-
-#check of marginal distribution (self-built slightly wrong)
-a<-UnifCovMatSamp(10000, c(1,1,1,1,1))
-rowind<-1 #indexes
-colind<-5
-b<-rep(NA, 10000)
-d<-rep(NA, 10000)
-for(i in 1:10000){
-  b[i]<-a[[i]][colind,rowind]
-  d[i]<-rcorrmatrix(5, 1)[colind,rowind]
-}
-hist(d)
-
-# Test of "the shape of partial correlation matrices" corollary 2 (artner, wellingerhof)
-corgen<-function(dim, nsamp){
-  mylist<-list()
-  i<-1
-  while(i<=nsamp){
-    samped<-runif((dim*(dim-1)/2), min=-1, max=1)
-    mat<- - diag(1, nrow=dim, ncol=dim)
-    mat[lower.tri(mat)==TRUE]<- samped
-    mat[upper.tri(mat)==TRUE] <- mat[lower.tri(mat)==TRUE] #partial correlation matrix constructed
-    
-    cormat<- - mat
-    cond<-ifelse(eigen(cormat)$val>0, 1, 0)
-    if(sum(cond)==dim){
-      mylist[[i]] <- cormat
-      i <- i + 1
-    }
-  }
-  return(mylist)
-}
-a<-corgen(3, 10000)
-b<-rep(NA, 10000)
-for(i in 1:10000){
-  b[i]<-a[[i]][2,3]
-}
-hist(b)
-
-
-#Jarle's code
-set.seed(1)
-n <- 5
-Sigma <- diag(n)
-partialcorr <- replicate(10000,{
-  repeat{
-    u <- runif(n*(n-1)/2, -1, 1)
-    Sigma[lower.tri(Sigma)] <- u
-    Sigma[upper.tri(Sigma)] <- t(Sigma)[upper.tri(Sigma)]
-    if (sum(eigen(Sigma)$val>0)==n)  
-      break()
-  }
-  P <- solve(Sigma)
-  D <- diag(1/sqrt(diag(P)))
-  (D %*% P %*% D)[lower.tri(P)]
-})
-
-toeplitz(c(-1,partialcorr[,1]))
-
 #General check of predictive distribution for >= 3 dimensions
 
 #1: Sample n priors
@@ -345,7 +247,7 @@ d<-3 #dimension
 muvec<-rep(0,d)
 sigmavec<-rep(1,d)
 
-Sigma <- - diag(d)
+Sigma <- - diag(d) #starting to build partial correlation matrix
 corr_from_pcor <- replicate(n,{
   repeat{
     u <- runif(d*(d-1)/2, -1, 1)
@@ -354,31 +256,33 @@ corr_from_pcor <- replicate(n,{
     if ((sum(eigen(Sigma)$val<0)==d)) 
       break()
   }
+  # Lemma 2 from Artner 2022 space of partial correlation matrices to convert to correlation matrix
   S <- - Sigma
   S_inv <- solve(S)
   D_S_inv <- solve(diag(sqrt(diag(S_inv))))
   (D_S_inv %*% S_inv %*% D_S_inv)[lower.tri(S_inv)==TRUE]
 })
 
-corr_from_pcor[,1]
-
-
-x_1<-c()
-x_2<-c()
-x_3<-c()
-m<-4
-
-
 
 #2 Sample Data given priors
 
+m <- 4 #how many datapoints per iteration
+Data_mat<-matrix(NA, nrow=(n*m), ncol=d)
+
+
 for(i in 1:n){
   corrmat<- diag(1, nrow=d)
-  corrmat[lower.tri(corrmat)==TRUE]<-corr_from_pcor[,i]
-  corrmat[upper.tri(corrmat)==TRUE]<-corrmat[lower.tri(corrmat)==TRUE]
+  corrmat[lower.tri(corrmat)==TRUE] <- corr_from_pcor[,i]
+  corrmat[upper.tri(corrmat)==TRUE] <- corrmat[lower.tri(corrmat)==TRUE]
   Sigma <- diag(sigmavec) %*% corrmat %*% diag(sigmavec)
   a <- rmvnorm(m, mean=muvec, sigma=Sigma)
-  x_1 <- append(a[,1], x_1)
-  x_2 <- append(a[,2], x_2)
-  x_3 <- append(a[,3], x_3)
+  Data_mat[(((i-1)*m)+1):(i*m),(1:d)] <- a
 }
+
+#3 Estimate parameters ????
+
+parasims<-40
+predsims<-1
+it<-floor(n/m)
+
+for(i in 1:it){}
