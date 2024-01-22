@@ -279,10 +279,29 @@ for(i in 1:n){
   Data_mat[(((i-1)*m)+1):(i*m),(1:d)] <- a
 }
 
-#3 Estimate parameters ????
+#3 Estimate parameters
 
-parasims<-40
-predsims<-1
-it<-floor(n/m)
+theta_test<-c(1,1,1,1,0.5)
 
-for(i in 1:it){}
+target_dens<-function(theta, x){
+  d<- (1/2) * (sqrt( 8 * length(theta) + 9) - 3) #integer solution to equation len(theta) = d/2 * (3+d)
+  mu<-theta[1:d]
+  margvar<-theta[(d+1):(d*2)]
+  parcorrs<-theta[((d*2)+1):((d*2) + d*(d-1)/2)]
+  
+  parcorrmat <- diag(-1, nrow=length(parcorrs))
+  parcorrmat[lower.tri(parcorrmat)==TRUE] <- parcorrs
+  parcorrmat[upper.tri(parcorrmat)==TRUE] <- parcorrmat[lower.tri(parcorrmat)==TRUE]
+  
+  S <- - parcorrmat
+  S_inv <- solve(S)
+  D_S_inv <- solve(diag(sqrt(diag(S_inv))))
+  corrmat<-(D_S_inv %*% S_inv %*% D_S_inv)
+  
+  Sigma <- diag(margvar) %*% corrmat %*% diag(margvar)
+  
+  logdens<-dmvnorm(x, mean=mu, sigma=Sigma, log=TRUE)
+  logprior<- -2 * sum(log(margvar))
+  sum(logdens) + logprior
+}
+
