@@ -284,7 +284,7 @@ for(i in 1:n){
 theta_test<-c(1,1,1,1,0.5)
 
 target_dens<-function(theta, x){
-  d<- (1/2) * (sqrt( 8 * length(theta) + 9) - 3) #integer solution to equation len(theta) = d/2 * (3+d)
+  d <- (1/2) * (sqrt( 8 * length(theta) + 9) - 3) #integer solution to equation len(theta) = d/2 * (3+d)
   mu<-theta[1:d]
   margvar<-theta[(d+1):(d*2)]
   parcorrs<-theta[((d*2)+1):((d*2) + d*(d-1)/2)]
@@ -305,3 +305,18 @@ target_dens<-function(theta, x){
   sum(logdens) + logprior
 }
 
+parasims<-40
+predsims<-1
+it<-10
+
+
+init<-c(rep(0,d), rep(1,d), rep(-1/(10*d), (d*(d-1)/2)))
+
+
+for(i in 1:it){
+  block<-Data_mat[((i-1)*m+1):(i*m),]
+  lower=c(rep(-1000, d), rep(0,d), rep(-1, (d*(d-1)/2)))
+  upper=c(rep(1000, d), rep(1000,d), rep(1, (d*(d-1)/2)))
+  print(i)
+  chain <- MCMCmetrop1R(target_dens, theta.init=init, x=block, optim.lower=lower, optim.upper=upper, optim.method="L-BFGS-B")
+}
