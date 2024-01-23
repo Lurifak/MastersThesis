@@ -241,7 +241,7 @@ seq(from=1/(m+1), to=m/(m+1), by=1/(m+1)) #Expected under t dist
 #General check of predictive distribution for >= 3 dimensions
 
 #1: Sample n priors
-n<-10000
+n<-100
 d<-3 #dimension
 
 muvec<-rep(0,d)
@@ -281,10 +281,9 @@ for(i in 1:n){
 
 #3 Estimate parameters
 
-theta_test<-c(1,1,1,1,0.5)
 
 target_dens<-function(theta, x){
-  d <- (1/2) * (sqrt( 8 * length(theta) + 9) - 3) #integer solution to equation len(theta) = d/2 * (3+d)
+  d <- (1/2) * (sqrt(8 * length(theta) + 9) - 3) #integer solution to equation len(theta) = d/2 * (3+d)
   mu<-theta[1:d]
   margvar<-theta[(d+1):(d*2)]
   parcorrs<-theta[((d*2)+1):((d*2) + d*(d-1)/2)]
@@ -293,30 +292,34 @@ target_dens<-function(theta, x){
   parcorrmat[lower.tri(parcorrmat)==TRUE] <- parcorrs
   parcorrmat[upper.tri(parcorrmat)==TRUE] <- parcorrmat[lower.tri(parcorrmat)==TRUE]
   
-  S <- - parcorrmat
-  S_inv <- solve(S)
-  D_S_inv <- solve(diag(sqrt(diag(S_inv))))
-  corrmat<-(D_S_inv %*% S_inv %*% D_S_inv)
   
-  Sigma <- diag(margvar) %*% corrmat %*% diag(margvar)
+  if ((sum(eigen(parcorrmat)$val<0)==d)){
+    S <- - parcorrmat
+    S_inv <- solve(S)
+    D_S_inv <- solve(diag(sqrt(diag(S_inv))))
+    corrmat<-(D_S_inv %*% S_inv %*% D_S_inv)
+    Sigma <- diag(margvar) %*% corrmat %*% diag(margvar)
   
-  logdens<-dmvnorm(x, mean=mu, sigma=Sigma, log=TRUE)
-  logprior<- -2 * sum(log(margvar))
-  sum(logdens) + logprior
+    logdens<-dmvnorm(x, mean=mu, sigma=Sigma, log=TRUE)
+    logprior<- -2 * sum(log(margvar))
+    a<-sum(logdens) + logprior
+    if(is.na(a)){
+      -Inf
+    }
+    else{(a)}
+  }else{-100000}
 }
 
-parasims<-40
-predsims<-1
-it<-10
+set.seed(2)
+init<-c(rep(0,d), rep(1,d), rep(-0.1, d*(d-1)/2))
 
-
-init<-c(rep(0,d), rep(1,d), rep(-1/(10*d), (d*(d-1)/2)))
-
-
-for(i in 1:it){
+for(i in 1:n){
   block<-Data_mat[((i-1)*m+1):(i*m),]
-  lower=c(rep(-1000, d), rep(0,d), rep(-1, (d*(d-1)/2)))
-  upper=c(rep(1000, d), rep(1000,d), rep(1, (d*(d-1)/2)))
+  lower=c(rep(-10000, d), rep(0.0000000001,d), rep(-1, (d*(d-1)/2)))
+  upper=c(rep(10000, d), rep(10000,d), rep(1, (d*(d-1)/2)))
   print(i)
   chain <- MCMCmetrop1R(target_dens, theta.init=init, x=block, optim.lower=lower, optim.upper=upper, optim.method="L-BFGS-B")
+  #MCMCmetrop1R(target_dens, theta.init=init, x=block)
 }
+
+summary(chain)
