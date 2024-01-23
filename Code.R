@@ -281,6 +281,7 @@ for(i in 1:n){
 
 #3 Estimate parameters
 
+bignumber<-2e+10 #optimization does not accept Inf as possible value, so required
 
 target_dens<-function(theta, x){
   d <- (1/2) * (sqrt(8 * length(theta) + 9) - 3) #integer solution to equation len(theta) = d/2 * (3+d)
@@ -304,22 +305,18 @@ target_dens<-function(theta, x){
     logprior<- -2 * sum(log(margvar))
     a<-sum(logdens) + logprior
     if(is.na(a)){
-      -Inf
+      -bignumber
     }
     else{(a)}
-  }else{-100000}
+  }else{-bignumber}
 }
 
-set.seed(2)
-init<-c(rep(0,d), rep(1,d), rep(-0.1, d*(d-1)/2))
+init<-c(rep(0,d), rep(1,d), rep(0, d*(d-1)/2))
 
-for(i in 1:n){
+for(i in 1:1){
   block<-Data_mat[((i-1)*m+1):(i*m),]
-  lower=c(rep(-10000, d), rep(0.0000000001,d), rep(-1, (d*(d-1)/2)))
-  upper=c(rep(10000, d), rep(10000,d), rep(1, (d*(d-1)/2)))
-  print(i)
-  chain <- MCMCmetrop1R(target_dens, theta.init=init, x=block, optim.lower=lower, optim.upper=upper, optim.method="L-BFGS-B")
-  #MCMCmetrop1R(target_dens, theta.init=init, x=block)
+  chain<-MCMCmetrop1R(target_dens, theta.init=init, x=block)
 }
 
 summary(chain)
+plot(chain)
