@@ -240,6 +240,8 @@ seq(from=1/(m+1), to=m/(m+1), by=1/(m+1)) #Expected under t dist
 
 #General check of predictive distribution for >= 3 dimensions
 
+set.seed(1)
+
 #1: Sample n priors
 n<-100
 d<-3 #dimension
@@ -276,7 +278,7 @@ for(i in 1:n){
   corrmat[upper.tri(corrmat)==TRUE] <- corrmat[lower.tri(corrmat)==TRUE]
   Sigma <- diag(sigmavec) %*% corrmat %*% diag(sigmavec)
   a <- rmvnorm(m, mean=muvec, sigma=Sigma)
-  Data_mat[(((i-1)*m)+1):(i*m),(1:d)] <- a
+  Data_mat[(((i-1)*m)+1):(i*m),] <- a
 }
 
 #3 Estimate parameters
@@ -298,22 +300,23 @@ target_dens<-function(theta, x){
     S <- - parcorrmat
     S_inv <- solve(S)
     D_S_inv <- solve(diag(sqrt(diag(S_inv))))
-    corrmat<-(D_S_inv %*% S_inv %*% D_S_inv)
+    corrmat <-(D_S_inv %*% S_inv %*% D_S_inv)
     Sigma <- diag(margvar) %*% corrmat %*% diag(margvar)
   
     logdens<-dmvnorm(x, mean=mu, sigma=Sigma, log=TRUE)
     logprior<- -2 * sum(log(margvar))
-    a<-sum(logdens) + logprior
+    a <- sum(logdens) + logprior
     if(is.na(a)){
       -bignumber
     }
     else{(a)}
-  }else{-bignumber}
+  }
+  else{-bignumber}
 }
 
 init<-c(rep(0,d), rep(1,d), rep(0, d*(d-1)/2))
 para_len<-length(init)
-mcmcsamps<-1000
+mcmcsamps<-10000
 paramat<-matrix(NA, nrow=n*mcmcsamps, ncol=para_len)
 
 for(i in 1:n){
@@ -327,7 +330,7 @@ summary(chain)
 plot(chain)
 
 
-#4: simulate predictive sample given samples from posterior
+#4: simulate predictive samples given samples from posterior
 
 npredsamp<-1
 predsamps<-matrix(NA, nrow=(mcmcsamps*n*npredsamp), ncol=d)
@@ -343,4 +346,20 @@ for(i in 1:(mcmcsamps*n)){
   predsamps[i,] <- a
 }
 
+#5: Counting amount of times above observations
 
+countmat<-matrix(0, nrow=m, ncol=d)
+
+for(i in 1:n){
+  obs<-Data_mat[(((i-1)*m)+1):(i*m),] #block of data from step 2
+  for(j in 1:d){
+    orderstat<-sort(obs[,j], decreasing=TRUE) #empirical order statistics for jth dimension
+    for(k in 1:m){
+      datablock<-predsamps[((i-1)*mcmcsamps + 1): (i*mcmcsamps),j]
+      countmat[k,j]<- countmat[k,j] + sum(ifelse(datablock<orderstat[k], 1, 0))
+    }
+  }
+}
+
+probmat<-countmat/(n*mcmcsamps)
+probmat
