@@ -312,11 +312,35 @@ target_dens<-function(theta, x){
 }
 
 init<-c(rep(0,d), rep(1,d), rep(0, d*(d-1)/2))
+para_len<-length(init)
+mcmcsamps<-1000
+paramat<-matrix(NA, nrow=n*mcmcsamps, ncol=para_len)
 
-for(i in 1:1){
+for(i in 1:n){
   block<-Data_mat[((i-1)*m+1):(i*m),]
-  chain<-MCMCmetrop1R(target_dens, theta.init=init, x=block)
+  print(i)
+  chain<-MCMCmetrop1R(target_dens, theta.init=init, x=block, mcmc=mcmcsamps)
+  paramat[(1 + (i-1)*mcmcsamps):(i*mcmcsamps),]<-chain
 }
 
 summary(chain)
 plot(chain)
+
+
+#4: simulate predictive sample given samples from posterior
+
+npredsamp<-1
+predsamps<-matrix(NA, nrow=(mcmcsamps*n*npredsamp), ncol=d)
+
+for(i in 1:(mcmcsamps*n)){
+  print(i)
+  theta <- paramat[i,]
+  corrmat <- diag(1, nrow=d)
+  corrmat[lower.tri(corrmat)==TRUE] <- theta[(2*d + 1):para_len]
+  corrmat[upper.tri(corrmat)==TRUE] <- corrmat[lower.tri(corrmat)==TRUE]
+  Sigma <- diag(theta[(d+1):(2*d)]) %*% corrmat %*% diag(theta[(d+1):(2*d)])
+  a <- rmvnorm(1, mean=theta[1:d], sigma=Sigma)
+  predsamps[i,] <- a
+}
+
+
