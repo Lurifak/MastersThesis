@@ -162,14 +162,14 @@ mean(ifelse(b[,2]>sorted2[3], 1, 0))
 mean(ifelse(b[,2]>sorted2[4], 1, 0))
 
 #Sample rho and other parameters
-n<-1000
+n<-10000
 
 #holder <- rlogis(n,0,1) #prior from berger sun
 #rho <- 2*plogis(holder)-1
-#rho[rho>0.99]
+rho<-runif(n, -0.99, 0.99)
 
 #rho<-seq(from=-0.99, to=0.99, length.out=n)
-rho<-runif(n, min=-0.0000001, max=0.0000001)
+#rho<-runif(n, min=-0.0000001, max=0.0000001)
 
 #rho<-seq(from=-0.99, to=0.99, length.out=n)
 hist(rho)
@@ -182,7 +182,7 @@ sigma_2 <- 10
 #Sampling data
 
 meanvec<-c(mu_1, mu_2)
-m<-5
+m<-4
 x_1<-c()
 x_2<-c()
 
@@ -206,7 +206,7 @@ b_3<-0
 b_4<-0
 b_5<-0
 
-parasims<-40
+parasims<-20
 predsims<-1
 it<-floor(n/m)
 
@@ -240,7 +240,7 @@ seq(from=1/(m+1), to=m/(m+1), by=1/(m+1)) #Expected under t dist
 
 #General check of predictive distribution for >= 3 dimensions
 
-set.seed(1)
+set.seed(3)
 
 #1: Sample n priors
 n<-100
@@ -283,7 +283,7 @@ for(i in 1:n){
 
 #3 Estimate parameters
 
-bignumber<-2e+10 #optimization does not accept Inf as possible value, so required
+bignumber <- 1e+10 #optimization does not accept Inf as possible value, so required
 
 target_dens<-function(theta, x){
   d <- (1/2) * (sqrt(8 * length(theta) + 9) - 3) #integer solution to equation len(theta) = d/2 * (3+d)
@@ -306,7 +306,9 @@ target_dens<-function(theta, x){
     logdens<-dmvnorm(x, mean=mu, sigma=Sigma, log=TRUE)
     logprior<- -2 * sum(log(margvar))
     a <- sum(logdens) + logprior
-    if(is.na(a)){
+    
+    #condition if input is negative marginal variance
+    if(is.na(logprior)){
       -bignumber
     }
     else{(a)}
