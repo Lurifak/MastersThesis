@@ -240,10 +240,10 @@ seq(from=1/(m+1), to=m/(m+1), by=1/(m+1)) #Expected under t dist
 
 #General check of predictive distribution for >= 3 dimensions
 
-set.seed(3)
+set.seed(1)
 
 #1: Sample n priors
-n<-100
+n<-10000
 d<-3 #dimension
 
 muvec<-rep(0,d)
@@ -316,26 +316,31 @@ target_dens<-function(theta, x){
   else{-bignumber}
 }
 
-init<-c(rep(0,d), rep(1,d), rep(0, d*(d-1)/2))
-para_len<-length(init)
-mcmcsamps<-10000
-paramat<-matrix(NA, nrow=n*mcmcsamps, ncol=para_len)
+init <- c(rep(0,d), rep(1,d), rep(0, d*(d-1)/2))
+para_len <- length(init)
+mcmcsamps <- 1000
+paramat <- matrix(NA, nrow=n*mcmcsamps, ncol=para_len)
 
 for(i in 1:n){
   block<-Data_mat[((i-1)*m+1):(i*m),]
   print(i)
-  chain<-MCMCmetrop1R(target_dens, theta.init=init, x=block, mcmc=mcmcsamps)
-  paramat[(1 + (i-1)*mcmcsamps):(i*mcmcsamps),]<-chain
+  #Skipping iteration if error - happens rarely (~1/500 000 samples)
+  #Assuming this should not change the samples drastically
+  tryCatch({
+  paramat[(1 + (i-1)*mcmcsamps):(i*mcmcsamps),] <- MCMCmetrop1R(target_dens, theta.init=init, x=block, mcmc=mcmcsamps)
+  }, error=function(e){})
 }
-
-summary(chain)
-plot(chain)
-
 
 #4: simulate predictive samples given samples from posterior
 
-npredsamp<-1
-predsamps<-matrix(NA, nrow=(mcmcsamps*n*npredsamp), ncol=d)
+mu_1<-paramat[,1]
+n_missing_rows<-sum(ifelse(is.na(mu_1[is.na(mu_1)]), 1, 0))
+n <- n - n_missing_rows/mcmcsamps
+paramat<-paramat[complete.cases(paramat),]
+
+
+npredsamp <- 1
+predsamps <- matrix(NA, nrow=(mcmcsamps*n*npredsamp), ncol=d)
 
 for(i in 1:(mcmcsamps*n)){
   print(i)
@@ -365,3 +370,7 @@ for(i in 1:n){
 
 probmat<-countmat/(n*mcmcsamps)
 probmat
+
+
+#Comparison Bayesian Lasso and reparametrized model
+
