@@ -243,7 +243,7 @@ seq(from=1/(m+1), to=m/(m+1), by=1/(m+1)) #Expected under t dist
 set.seed(1)
 
 #1: Sample n priors
-n<-10000
+n<-1000
 d<-3 #dimension
 
 muvec<-rep(0,d)
@@ -269,13 +269,14 @@ corr_from_pcor <- replicate(n,{
 #2 Sample Data given priors
 
 m <- 4 #how many datapoints per iteration
-Data_mat<-matrix(NA, nrow=(n*m), ncol=d)
+Data_mat<-matrix(0, nrow=(n*m), ncol=d)
 
 
 for(i in 1:n){
-  corrmat<- diag(1, nrow=d)
+  corrmat <- diag(1, nrow=d)
   corrmat[lower.tri(corrmat)==TRUE] <- corr_from_pcor[,i]
-  corrmat[upper.tri(corrmat)==TRUE] <- corrmat[lower.tri(corrmat)==TRUE]
+  corrmat <- corrmat + t(corrmat) - diag(diag(corrmat))
+  # Output:
   Sigma <- diag(sigmavec) %*% corrmat %*% diag(sigmavec)
   a <- rmvnorm(m, mean=muvec, sigma=Sigma)
   Data_mat[(((i-1)*m)+1):(i*m),] <- a
@@ -283,7 +284,7 @@ for(i in 1:n){
 
 #3 Estimate parameters
 
-bignumber <- 1e+10 #optimization does not accept Inf as possible value, so required
+bignumber <- 8e+10 #optimization does not accept Inf as possible value, so required
 
 target_dens<-function(theta, x){
   d <- (1/2) * (sqrt(8 * length(theta) + 9) - 3) #integer solution to equation len(theta) = d/2 * (3+d)
@@ -293,7 +294,7 @@ target_dens<-function(theta, x){
   
   parcorrmat <- diag(-1, nrow=length(parcorrs))
   parcorrmat[lower.tri(parcorrmat)==TRUE] <- parcorrs
-  parcorrmat[upper.tri(parcorrmat)==TRUE] <- parcorrmat[lower.tri(parcorrmat)==TRUE]
+  parcorrmat <- parcorrmat + t(parcorrmat) - diag(diag(parcorrmat))
   
   
   if ((sum(eigen(parcorrmat)$val<0)==d)){
@@ -308,7 +309,7 @@ target_dens<-function(theta, x){
     a <- sum(logdens) + logprior
     
     #condition if input is negative marginal variance
-    if(is.na(logprior)){
+    if(any(is.na(logprior))){
       -bignumber
     }
     else{(a)}
@@ -318,7 +319,7 @@ target_dens<-function(theta, x){
 
 init <- c(rep(0,d), rep(1,d), rep(0, d*(d-1)/2))
 para_len <- length(init)
-mcmcsamps <- 1000
+mcmcsamps <- 100
 paramat <- matrix(NA, nrow=n*mcmcsamps, ncol=para_len)
 
 for(i in 1:n){
@@ -326,9 +327,9 @@ for(i in 1:n){
   print(i)
   #Skipping iteration if error - happens rarely (~1/500 000 samples)
   #Assuming this should not change the samples drastically
-  tryCatch({
+  #tryCatch({
   paramat[(1 + (i-1)*mcmcsamps):(i*mcmcsamps),] <- MCMCmetrop1R(target_dens, theta.init=init, x=block, mcmc=mcmcsamps)
-  }, error=function(e){})
+  #}, error=function(e){})
 }
 
 #4: simulate predictive samples given samples from posterior
@@ -347,7 +348,7 @@ for(i in 1:(mcmcsamps*n)){
   theta <- paramat[i,]
   corrmat <- diag(1, nrow=d)
   corrmat[lower.tri(corrmat)==TRUE] <- theta[(2*d + 1):para_len]
-  corrmat[upper.tri(corrmat)==TRUE] <- corrmat[lower.tri(corrmat)==TRUE]
+  corrmat <- corrmat + t(corrmat) - diag(diag(corrmat))
   Sigma <- diag(theta[(d+1):(2*d)]) %*% corrmat %*% diag(theta[(d+1):(2*d)])
   a <- rmvnorm(1, mean=theta[1:d], sigma=Sigma)
   predsamps[i,] <- a
