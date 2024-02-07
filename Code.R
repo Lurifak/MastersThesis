@@ -92,8 +92,8 @@ alg<-function(datamat, nsamples){
     }
   }
   
-  rhoest<-mean(samp_rho)
-  sigma1est<-mean(samp_sigma1)
+  rhoest<-mean(samp_rho) #why am i taking the mean??
+  sigma1est<-mean(samp_sigma1) #update: just set nsamp to 1
   sigma2est<-mean(samp_sigma2)
   Sigma<-matrix(data=c(sigma1est^2, rhoest*sigma1est*sigma2est, rhoest*sigma1est*sigma2est, sigma2est^2), nrow=2)
   mu<-rmvnorm(nsamples, c(mean_1, mean_2), sigma=Sigma/nsamples)
@@ -174,10 +174,10 @@ rho<-runif(n, -0.99, 0.99)
 #rho<-seq(from=-0.99, to=0.99, length.out=n)
 hist(rho)
 
-mu_1 <- 0
-mu_2 <- 0
+mu_1 <- 15
+mu_2 <- 15
 sigma_1 <- 10
-sigma_2 <- 10
+sigma_2 <- 1
 
 #Sampling data
 
@@ -187,6 +187,7 @@ x_1<-c()
 x_2<-c()
 
 for(i in 1:n){
+  print(i)
   Sigma <- matrix(data=c(sigma_1^2,sigma_1*sigma_2*rho[i],sigma_1*sigma_2*rho[i],sigma_2^2), nrow=2)
   a <- rmvnorm(m, mean=meanvec, sigma=Sigma)
   x_1 <- append(a[,1], x_1)
@@ -206,7 +207,7 @@ b_3<-0
 b_4<-0
 b_5<-0
 
-parasims<-20
+parasims<-10
 predsims<-1
 it<-floor(n/m)
 
@@ -240,11 +241,11 @@ seq(from=1/(m+1), to=m/(m+1), by=1/(m+1)) #Expected under t dist
 
 #General check of predictive distribution for >= 3 dimensions
 
-set.seed(1)
+set.seed(2)
 
 #1: Sample n priors
-n<-1000
-d<-3 #dimension
+n<-5000
+d<-4 #dimension
 
 muvec<-rep(0,d)
 sigmavec<-rep(1,d)
@@ -268,7 +269,7 @@ corr_from_pcor <- replicate(n,{
 
 #2 Sample Data given priors
 
-m <- 4 #how many datapoints per iteration
+m <- 5 #how many datapoints per iteration
 Data_mat<-matrix(0, nrow=(n*m), ncol=d)
 
 
@@ -292,7 +293,7 @@ target_dens<-function(theta, x){
   margvar<-theta[(d+1):(d*2)]
   parcorrs<-theta[((d*2)+1):((d*2) + d*(d-1)/2)]
   
-  parcorrmat <- diag(-1, nrow=length(parcorrs))
+  parcorrmat <- diag(-1, nrow=d)
   parcorrmat[lower.tri(parcorrmat)==TRUE] <- parcorrs
   parcorrmat <- parcorrmat + t(parcorrmat) - diag(diag(parcorrmat))
   
@@ -325,11 +326,11 @@ paramat <- matrix(NA, nrow=n*mcmcsamps, ncol=para_len)
 for(i in 1:n){
   block<-Data_mat[((i-1)*m+1):(i*m),]
   print(i)
-  #Skipping iteration if error - happens rarely (~1/500 000 samples)
+  #Skipping iteration if error - happens rarely (~ 1% chance per iteration)
   #Assuming this should not change the samples drastically
-  #tryCatch({
+  tryCatch({
   paramat[(1 + (i-1)*mcmcsamps):(i*mcmcsamps),] <- MCMCmetrop1R(target_dens, theta.init=init, x=block, mcmc=mcmcsamps)
-  #}, error=function(e){})
+  }, error=function(e){})
 }
 
 #4: simulate predictive samples given samples from posterior
@@ -364,7 +365,7 @@ for(i in 1:n){
     orderstat<-sort(obs[,j], decreasing=TRUE) #empirical order statistics for jth dimension
     for(k in 1:m){
       datablock<-predsamps[((i-1)*mcmcsamps + 1): (i*mcmcsamps),j]
-      countmat[k,j]<- countmat[k,j] + sum(ifelse(datablock<orderstat[k], 1, 0))
+      countmat[k,j]<- countmat[k,j] + sum(ifelse(datablock<orderstat[k], 1, 0)) #add count of simulations above observed value
     }
   }
 }
@@ -372,6 +373,51 @@ for(i in 1:n){
 probmat<-countmat/(n*mcmcsamps)
 probmat
 
+rowMeans(probmat)
 
 #Comparison Bayesian Lasso and reparametrized model
+
+#1. From our prior
+
+#1.1: Sample n priors
+n<-1000
+d<-4 #dimension
+
+muvec<-rep(0,d)
+sigmavec<-rep(1,d)
+
+corr_from_pcor <- replicate(n,{
+  repeat{
+    u <- runif(d*(d-1)/2, -1, 1)
+    Sigma[lower.tri(Sigma)] <- u
+    Sigma[upper.tri(Sigma)] <- t(Sigma)[upper.tri(Sigma)]
+    if ((sum(eigen(Sigma)$val<0)==d)) 
+      break()
+  }
+  # Lemma 2 from Artner 2022 space of partial correlation matrices to convert to correlation matrix
+  S <- - Sigma
+  S_inv <- solve(S)
+  D_S_inv <- solve(diag(sqrt(diag(S_inv))))
+  (D_S_inv %*% S_inv %*% D_S_inv)[lower.tri(S_inv)==TRUE]
+})
+
+#1.2 Sample Data given priors
+
+m <- 5 #how many datapoints per iteration.
+#We use m-1 observations to fit the model and then compare
+#sample from predicted (from model) with remaining obs
+Data_mat<-matrix(0, nrow=(n*m), ncol=d)
+
+
+for(i in 1:n){
+  corrmat <- diag(1, nrow=d)
+  corrmat[lower.tri(corrmat)==TRUE] <- corr_from_pcor[,i]
+  corrmat <- corrmat + t(corrmat) - diag(diag(corrmat))
+  # Output:
+  Sigma <- diag(sigmavec) %*% corrmat %*% diag(sigmavec)
+  a <- rmvnorm(m, mean=muvec, sigma=Sigma)
+  Data_mat[(((i-1)*m)+1):(i*m),] <- a
+}
+
+
 
