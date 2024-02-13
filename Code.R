@@ -380,11 +380,13 @@ rowMeans(probmat)
 #1. From our prior
 
 #1.1: Sample n priors
-n<-1000
-d<-4 #dimension
+n<-10
+d<-3 #dimension
 
 muvec<-rep(0,d)
 sigmavec<-rep(1,d)
+
+Sigma <- - diag(d) #starting to build partial correlation matrix
 
 corr_from_pcor <- replicate(n,{
   repeat{
@@ -403,11 +405,11 @@ corr_from_pcor <- replicate(n,{
 
 #1.2 Sample Data given priors
 
-m <- 5 #how many datapoints per iteration.
+m <- 4 #how many datapoints per iteration.
 #We use m-1 observations to fit the model and then compare
 #sample from predicted (from model) with remaining obs
 Data_mat<-matrix(0, nrow=(n*m), ncol=d)
-
+mth_obs<-matrix(NA, nrow = n, ncol=d) #holdout observations
 
 for(i in 1:n){
   corrmat <- diag(1, nrow=d)
@@ -417,7 +419,58 @@ for(i in 1:n){
   Sigma <- diag(sigmavec) %*% corrmat %*% diag(sigmavec)
   a <- rmvnorm(m, mean=muvec, sigma=Sigma)
   Data_mat[(((i-1)*m)+1):(i*m),] <- a
+  mth_obs[i,]<-Data_mat[(i*m),]
 }
 
+
+#1.3 
+
+init <- c(rep(0,d), rep(1,d), rep(0, d*(d-1)/2))
+para_len <- length(init)
+mcmcsamps <- 10
+paramat <- matrix(NA, nrow=n*mcmcsamps, ncol=para_len)
+
+for(i in 1:n){
+  block<-Data_mat[((i-1)*m+1):(i*(m-1)),] #do not use mth observation
+  #Skipping iteration if error - happens rarely (~ 1-2% chance per iteration)
+  #Assuming this should not change the samples drastically
+  tryCatch({
+    paramat[(1 + (i-1)*mcmcsamps):(i*mcmcsamps),] <- MCMCmetrop1R(target_dens, theta.init=init, x=block, mcmc=mcmcsamps)
+  }, error=function(e){})
+}
+
+
+mu_1<-paramat[,1]
+cond<-is.na(mu_1[seq(1, n*mcmcsamps, by=mcmcsamps)]) #removing crashed samples
+mth_obs_1<-mth_obs[!cond,]
+
+n_missing_rows<-sum(ifelse(cond, 1, 0))
+n <- n - n_missing_rows
+paramat<-paramat[complete.cases(paramat),]
+
+
+#1.4
+npredsamp <- 1
+predsamps <- matrix(NA, nrow=(mcmcsamps*n*npredsamp), ncol=d)
+
+for(i in 1:(mcmcsamps*n)){
+  theta <- paramat[i,]
+  
+  corrmat <- diag(1, nrow=d)
+  corrmat[lower.tri(corrmat)==TRUE] <- theta[(2*d + 1):para_len]
+  corrmat <- corrmat + t(corrmat) - diag(diag(corrmat))
+  
+  Sigma <- diag(theta[(d+1):(2*d)]) %*% corrmat %*% diag(theta[(d+1):(2*d)])
+  
+  a <- rmvnorm(1, mean=theta[1:d], sigma=Sigma)
+  predsamps[i,] <- a
+}
+
+#1.5 residuals
+
+resid_vec_ourmod<-rep(NA, mcmcsamps*n*npredsamps)
+for(i in 1:n){
+  
+}
 
 
