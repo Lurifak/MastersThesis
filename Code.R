@@ -244,7 +244,7 @@ seq(from=1/(m+1), to=m/(m+1), by=1/(m+1)) #Expected under t dist
 set.seed(2)
 
 #1: Sample n priors
-n<-5000
+n<-100
 d<-4 #dimension
 
 muvec<-rep(0,d)
@@ -285,37 +285,35 @@ for(i in 1:n){
 
 #3 Estimate parameters
 
-bignumber <- 8e+10 #optimization does not accept Inf as possible value, so required
+bignumber <- 8e+12 #optimization does not accept Inf as possible value, so required
 
 target_dens<-function(theta, x){
   d <- (1/2) * (sqrt(8 * length(theta) + 9) - 3) #integer solution to equation len(theta) = d/2 * (3+d)
   mu<-theta[1:d]
   margvar<-theta[(d+1):(d*2)]
-  parcorrs<-theta[((d*2)+1):((d*2) + d*(d-1)/2)]
-  
-  parcorrmat <- diag(-1, nrow=d)
-  parcorrmat[lower.tri(parcorrmat)==TRUE] <- parcorrs
-  parcorrmat <- parcorrmat + t(parcorrmat) - diag(diag(parcorrmat))
-  
-  
-  if ((sum(eigen(parcorrmat)$val<0)==d)){
-    S <- - parcorrmat
-    S_inv <- solve(S)
-    D_S_inv <- solve(diag(sqrt(diag(S_inv))))
-    corrmat <-(D_S_inv %*% S_inv %*% D_S_inv)
-    Sigma <- diag(margvar) %*% corrmat %*% diag(margvar)
-  
-    logdens<-dmvnorm(x, mean=mu, sigma=Sigma, log=TRUE)
-    logprior<- -2 * sum(log(margvar))
-    a <- sum(logdens) + logprior
-    
-    #condition if input is negative marginal variance
-    if(any(is.na(logprior))){
-      -bignumber
-    }
-    else{(a)}
+  if(any(margvar<=0)){
+    -Inf
   }
-  else{-bignumber}
+  else{
+    parcorrs<-theta[((d*2)+1):((d*2) + d*(d-1)/2)]
+    parcorrmat <- diag(-1, nrow=d)
+    parcorrmat[lower.tri(parcorrmat)==TRUE] <- parcorrs
+    parcorrmat <- parcorrmat + t(parcorrmat) - diag(diag(parcorrmat))
+  
+  
+    if ((sum(eigen(parcorrmat)$val<0)==d)){
+      S <- - parcorrmat
+      S_inv <- solve(S)
+      D_S_inv <- solve(diag(sqrt(diag(S_inv))))
+      corrmat <-(D_S_inv %*% S_inv %*% D_S_inv)
+      Sigma <- diag(margvar) %*% corrmat %*% diag(margvar)
+  
+      logdens <- dmvnorm(x, mean=mu, sigma=Sigma, log=TRUE)
+      logprior<- -2 * sum(log(margvar))
+      sum(logdens) + logprior
+    }
+    else{-Inf}
+  }
 }
 
 init <- c(rep(0,d), rep(1,d), rep(0, d*(d-1)/2))
@@ -377,10 +375,13 @@ rowMeans(probmat)
 
 #Comparison Bayesian Lasso and reparametrized model
 
+
 #1. From our prior
 
+set.seed(3)
+
 #1.1: Sample n priors
-n<-10
+n<-1000
 d<-3 #dimension
 
 muvec<-rep(0,d)
@@ -405,7 +406,7 @@ corr_from_pcor <- replicate(n,{
 
 #1.2 Sample Data given priors
 
-m <- 4 #how many datapoints per iteration.
+m <- 10 #how many datapoints per iteration.
 #We use m-1 observations to fit the model and then compare
 #sample from predicted (from model) with remaining obs
 Data_mat<-matrix(0, nrow=(n*m), ncol=d)
@@ -441,12 +442,13 @@ for(i in 1:n){
 
 
 mu_1<-paramat[,1]
-cond<-is.na(mu_1[seq(1, n*mcmcsamps, by=mcmcsamps)]) #removing crashed samples
+#removing crashed samples
+cond<-is.na(mu_1[seq(1, n*mcmcsamps, by=mcmcsamps)])
 mth_obs_1<-mth_obs[!cond,]
 
-n_missing_rows<-sum(ifelse(cond, 1, 0))
+n_missing_rows <- sum(ifelse(cond, 1, 0))
 n <- n - n_missing_rows
-paramat<-paramat[complete.cases(paramat),]
+paramat <- paramat[complete.cases(paramat),]
 
 
 #1.4
@@ -466,11 +468,42 @@ for(i in 1:(mcmcsamps*n)){
   predsamps[i,] <- a
 }
 
-#1.5 residuals
+#1.5 residuals in last dimension
 
-resid_vec_ourmod<-rep(NA, mcmcsamps*n*npredsamps)
+resid_vec_ourmod<-rep(NA, mcmcsamps*n*npredsamp)
 for(i in 1:n){
-  
+  for(j in (1 + (1-i)*mcmcsamps):(i*mcmcsamps)){
+    theta <- paramat[j,] # 1 sample from posterior
+    
+    corrmat <- diag(1, nrow=d)
+    corrmat[lower.tri(corrmat)==TRUE] <- theta[(2*d + 1):para_len]
+    corrmat <- corrmat + t(corrmat) - diag(diag(corrmat))
+    Sigma <- diag(theta[(d+1):(2*d)]) %*% corrmat %*% diag(theta[(d+1):(2*d)])
+    
+    Sigma_11 <- Sigma[1,1]
+    Sigma_12 <- Sigma[1, 2:d]
+    Sigma_21 <- Sigma[2:d, 1]
+    Sigma_22_inv <- solve(Sigma[2:d, 2:d])
+    
+    mu_1 <- theta[1]
+    mu_2 <- theta[2:d]
+    
+    condmean<-as.numeric(mu_1 + Sigma_12 %*% Sigma_22_inv %*% (mth_obs[i,2:d] - mu_2))
+    condvar<-as.numeric(Sigma_11 - Sigma_12 %*% Sigma_22_inv %*%  Sigma_21)
+    
+    # 1 sample of predicted x_1 given x_2, ... on observation not included in model
+    predsim <- rnorm(1, mean = condmean, sigma <- condvar) 
+    resid_vec_ourmod[j] <- (mth_obs[i,1] - predsim)^2
+  }
 }
 
+mean(resid_vec_ourmod[complete.cases(resid_vec_ourmod)])
 
+#hist
+hist(paramat[,7])
+hist(paramat[,8])
+hist(paramat[,9])
+
+mean(paramat[,7])
+mean(paramat[,8])
+mean(paramat[,9])
