@@ -2,6 +2,7 @@ library(MCMCpack)
 library(mvtnorm)
 library(corpcor)
 library(clusterGeneration)
+library(monomvn)
 
 # To observarsjoner fra regresjonsmodellen
 x <- rbind(c(0,0),c(1,1))
@@ -373,14 +374,14 @@ probmat
 
 rowMeans(probmat)
 
-#Comparison Bayesian Lasso and reparametrized model
+#1: Comparison Bayesian Lasso and reparametrized model
 
 
-#1. From our prior
+# From our prior
 
 set.seed(3)
 
-#1.1: Sample n priors
+#1.1.1: Sample n priors
 n<-1000
 d<-3 #dimension
 
@@ -404,7 +405,7 @@ corr_from_pcor <- replicate(n,{
   (D_S_inv %*% S_inv %*% D_S_inv)[lower.tri(S_inv)==TRUE]
 })
 
-#1.2 Sample Data given priors
+#1.1.2 Sample Data given priors
 
 m <- 10 #how many datapoints per iteration.
 #We use m-1 observations to fit the model and then compare
@@ -416,15 +417,15 @@ for(i in 1:n){
   corrmat <- diag(1, nrow=d)
   corrmat[lower.tri(corrmat)==TRUE] <- corr_from_pcor[,i]
   corrmat <- corrmat + t(corrmat) - diag(diag(corrmat))
-  # Output:
   Sigma <- diag(sigmavec) %*% corrmat %*% diag(sigmavec)
-  a <- rmvnorm(m, mean=muvec, sigma=Sigma)
-  Data_mat[(((i-1)*m)+1):(i*m),] <- a
+  
+  
+  Data_mat[(((i-1)*m)+1):(i*m),] <- rmvnorm(m, mean=muvec, sigma=Sigma)
   mth_obs[i,]<-Data_mat[(i*m),]
 }
 
 
-#1.3 
+#1.1.3 posterior sampling
 
 init <- c(rep(0,d), rep(1,d), rep(0, d*(d-1)/2))
 para_len <- length(init)
@@ -451,7 +452,7 @@ n <- n - n_missing_rows
 paramat <- paramat[complete.cases(paramat),]
 
 
-#1.4
+#1.4 predictive simulations
 npredsamp <- 1
 predsamps <- matrix(NA, nrow=(mcmcsamps*n*npredsamp), ncol=d)
 
@@ -468,7 +469,7 @@ for(i in 1:(mcmcsamps*n)){
   predsamps[i,] <- a
 }
 
-#1.5 residuals in last dimension
+#1.5 residuals in 1 dimension
 
 resid_vec_ourmod<-rep(NA, mcmcsamps*n*npredsamp)
 for(i in 1:n){
@@ -507,3 +508,21 @@ hist(paramat[,9])
 mean(paramat[,7])
 mean(paramat[,8])
 mean(paramat[,9])
+
+#1.2.1 Bayesian lasso
+
+resid_vec_blasso<-rep(NA, mcmcsamps*n*npredsamp)
+for(i in 1:n){
+  y <- Data_mat[(((i-1)*m)+1):(i*m - 1), 1]
+  X <- Data_mat[(((i-1)*m)+1):(i*m - 1), 2:d]
+  samps<-mcmcsamps/m + 1
+  mod_obj <- blasso(X, y, T=samps) #somehow needs to sample atleast 2
+  betas<-mod_obj$beta[-samps,]
+  mu_blasso<-mod_obj$mu[-samps]
+  sigmasq_blasso <- mod_obj$s2[-samps]
+  pred <- rnorm(1, mean = mu_blasso + mth_obs[i,2:d] %*% betas, 
+                sd = sigmasq_blasso)
+  resid_vec_blasso[i] <- (mth_obs[i,1] - pred)^2
+}
+
+mean(resid_vec_blasso[complete.cases(resid_vec_blasso)])
