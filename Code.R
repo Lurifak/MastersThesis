@@ -377,10 +377,10 @@ rowMeans(probmat)
 
 # From our prior
 
-set.seed(3)
+set.seed(1)
 
 #1.1.1: Sample n priors
-n<-100
+n<-500
 d<-3 #dimension
 
 muvec<-rep(0,d)
@@ -428,6 +428,7 @@ for(i in 1:n){
 init <- c(rep(0,d), rep(1,d), rep(0, d*(d-1)/2))
 para_len <- length(init)
 mcmcsamps <- 10
+burnin_mcmc <- 2000
 paramat <- matrix(NA, nrow=n*mcmcsamps, ncol=para_len)
 
 for(i in 1:n){
@@ -435,7 +436,7 @@ for(i in 1:n){
   #Skipping iteration if error - happens rarely (~ 1-2% chance per iteration)
   #Assuming this should not change the samples drastically
   tryCatch({
-    paramat[(1 + (i-1)*mcmcsamps):(i*mcmcsamps),] <- MCMCmetrop1R(target_dens, theta.init=init, x=block, mcmc=mcmcsamps)
+    paramat[(1 + (i-1)*mcmcsamps):(i*mcmcsamps),] <- MCMCmetrop1R(target_dens, theta.init=init, burnin=burnin_mcmc, x=block, mcmc=mcmcsamps)
   }, error=function(e){})
 }
 
@@ -492,7 +493,7 @@ for(i in 1:n){
     condvar<-as.numeric(Sigma_11 - Sigma_12 %*% Sigma_22_inv %*%  Sigma_21)
     
     # 1 sample of predicted y given x_1, ... on observation not included in model
-    predsim <- rnorm(1, mean = condmean, sigma <- condvar) 
+    predsim <- rnorm(1, mean = condmean, sd <- condvar) 
     resid_vec_ourmod[j] <- (mth_obs[i,1] - predsim)^2
   }
 }
@@ -511,7 +512,7 @@ mean(paramat[,9])
 #1.1.6 Bayesian lasso
 
 resid_vec_blasso<-rep(NA, n*npredsamp)
-burninit<-2000
+burninit<-5000
 for(i in 1:n){
   y <- Data_mat[(((i-1)*m)+1):(i*m - 1), 1]
   X <- Data_mat[(((i-1)*m)+1):(i*m - 1), 2:d]
@@ -532,9 +533,9 @@ mean(resid_vec_blasso^2)
 
 set.seed(2)
 
-n <- 100
+n <- 500
 d <- 3
-p <- (d-1) #for notational purposes
+p <- (d-1) #for notational purposes, denote vector (y, x_1 , ..., x_p)
 
 r <- 1
 delta <- 1 
@@ -557,7 +558,7 @@ for(i in 1:n){
 }
 
 # Generating X
-m <- 10
+m <- 100
 
 muvec<-rep(0,p)
 sigmavec<-rep(1,p)
@@ -610,15 +611,15 @@ for(i in 1:n){
 
 #1.2.2 Bayesian lasso
 
-resid_vec_blasso<-rep(NA, n*npredsamp)
-burninit<-2000
+resid_vec_blasso<-rep(NA, n)
+burnin_blasso<-5000
 for(i in 1:n){
   y <- Data_mat[(((i-1)*m)+1):(i*m - 1), 1]
   X <- Data_mat[(((i-1)*m)+1):(i*m - 1), 2:d]
-  mod_obj <- blasso(X, y, T=burninit)
-  betas<-mod_obj$beta[burninit,] #accepting only last sample of posterior
-  mu_blasso<-mod_obj$mu[burninit]
-  sigmasq_blasso <- mod_obj$s2[burninit]
+  mod_obj <- blasso(X, y, T=burnin_blasso)
+  betas<-mod_obj$beta[burnin_blasso,] #accepting only last sample of posterior
+  mu_blasso<-mod_obj$mu[burnin_blasso]
+  sigmasq_blasso <- mod_obj$s2[burnin_blasso]
   pred <- rnorm(1, mean = mu_blasso + mth_obs[i,2:d] %*% betas, 
                 sd = sqrt(sigmasq_blasso))
   resid_vec_blasso[i] <- (mth_obs[i,1] - pred)
@@ -626,11 +627,14 @@ for(i in 1:n){
 
 mean(resid_vec_blasso^2)
 
+
+
 #1.2.3 Our model
 
 init <- c(rep(0,d), rep(1,d), rep(0, d*(d-1)/2)) #means, marginal variances and p. correlations
 para_len <- length(init)
 mcmcsamps <- 10
+burnin_mcmc <- 2000
 paramat <- matrix(NA, nrow=n*mcmcsamps, ncol=para_len)
 
 for(i in 1:n){
@@ -638,7 +642,7 @@ for(i in 1:n){
   #Skipping iteration if error - happens rarely (~ 1-2% chance per iteration)
   #Assuming this should not change the samples drastically
   tryCatch({
-    paramat[(1 + (i-1)*mcmcsamps):(i*mcmcsamps),] <- MCMCmetrop1R(target_dens, theta.init=init, burnin=burninit, x=block, mcmc=mcmcsamps)
+    paramat[(1 + (i-1)*mcmcsamps):(i*mcmcsamps),] <- MCMCmetrop1R(target_dens, theta.init=init, burnin=burnin_mcmc, x=block, mcmc=mcmcsamps)
   }, error=function(e){})
 }
 
@@ -650,3 +654,65 @@ mth_obs<-mth_obs[!cond,]
 n_missing_rows <- sum(ifelse(cond, 1, 0))
 n <- n - n_missing_rows
 paramat <- paramat[complete.cases(paramat),]
+
+
+npredsamp <- 1
+predsamps <- matrix(NA, nrow=(mcmcsamps*n*npredsamp), ncol=d)
+
+for(i in 1:(mcmcsamps*n)){
+  theta <- paramat[i,]
+  
+  corrmat <- diag(1, nrow=d)
+  corrmat[lower.tri(corrmat)==TRUE] <- theta[(2*d + 1):para_len]
+  corrmat <- corrmat + t(corrmat) - diag(diag(corrmat))
+  
+  Sigma <- diag(theta[(d+1):(2*d)]) %*% corrmat %*% diag(theta[(d+1):(2*d)])
+  
+  predsamps[i,] <- rmvnorm(1, mean=theta[1:d], sigma=Sigma)
+}
+
+#1.1.5 residuals in 1 dimension
+
+resid_vec_ourmod<-rep(NA, mcmcsamps*n*npredsamp)
+for(i in 1:n){
+  for(j in (1 + (1-i)*mcmcsamps):(i*mcmcsamps)){
+    print(i)
+    theta <- paramat[j,] # 1 sample from posterior
+    
+    corrmat <- diag(1, nrow=d)
+    corrmat[lower.tri(corrmat)==TRUE] <- theta[(2*d + 1):para_len]
+    corrmat <- corrmat + t(corrmat) - diag(diag(corrmat))
+    Sigma <- diag(theta[(d+1):(2*d)]) %*% corrmat %*% diag(theta[(d+1):(2*d)])
+    
+    Sigma_11 <- Sigma[1,1]
+    Sigma_12 <- Sigma[1, 2:d]
+    Sigma_21 <- Sigma[2:d, 1]
+    Sigma_22_inv <- solve(Sigma[2:d, 2:d])
+    
+    mu_1 <- theta[1]
+    mu_2 <- theta[2:d]
+    
+    condmean<-as.numeric(mu_1 + Sigma_12 %*% Sigma_22_inv %*% (mth_obs[i,2:d] - mu_2))
+    condvar<-as.numeric(Sigma_11 - Sigma_12 %*% Sigma_22_inv %*%  Sigma_21)
+    
+    # 1 sample of predicted y given x_1, ... on observation not included in model
+    predsim <- rnorm(1, mean = condmean, sd <- sqrt(condvar)) 
+    resid_vec_ourmod[j] <- (mth_obs[i,1] - predsim)
+  }
+}
+
+resid_vec_ourmod <- resid_vec_ourmod[complete.cases(resid_vec_ourmod)]
+mean(resid_vec_ourmod^2)
+
+par(mfrow=c(3,3))
+hist(paramat[,1], breaks=100, main="mu_1")
+hist(paramat[,2], breaks=100, main="mu_2")
+hist(paramat[,3], breaks=100, main="mu_3")
+hist(paramat[,4], breaks=100, main="sigma_1")
+hist(paramat[,5], breaks=100, main="sigma_2")
+hist(paramat[,6], breaks=100, main="sigma_3")
+hist(paramat[,7], breaks=100, main="rho_12")
+hist(paramat[,8], breaks=100, main="rho_13")
+hist(paramat[,9], breaks=100, main="rho_23")
+
+mean(paramat[,6])
