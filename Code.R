@@ -60,6 +60,10 @@ hist.trunc(exp(chain[,3])^2, 10, .1)
 curve(dinvgamma(x, shape=1/2, scale=1/4), add=TRUE)
 
 
+jacob_pcor_resp_cor <- function(corrmat){
+  
+}
+
 
 
 #Berger & Sun 2008, Accept-Reject bivariate normal
@@ -300,7 +304,7 @@ target_dens<-function(theta, x){
     parcorrmat <- parcorrmat + t(parcorrmat) - diag(diag(parcorrmat))
   
   
-    if ((sum(eigen(parcorrmat)$val<0)==d)){ #negative definite
+    if ((sum(eigen(parcorrmat)$val<0)==d)){ # if partial corr mat is negative definite
       S <- - parcorrmat
       S_inv <- solve(S)
       D_S_inv <- solve(diag(sqrt(diag(S_inv))))
@@ -311,6 +315,7 @@ target_dens<-function(theta, x){
       logprior<- -2 * sum(log(margvar))
       sum(logdens) + logprior
     }
+    
     else{-Inf}
   }
 }
@@ -391,7 +396,7 @@ Sigma <- - diag(d) #starting to build partial correlation matrix
 corr_from_pcor <- replicate(n,{
   repeat{
     u <- runif(d*(d-1)/2, -1, 1)
-    Sigma[lower.tri(Sigma)] <- u
+    Sigma[lower.tri(Sigma)] <- u #partial corrs
     Sigma[upper.tri(Sigma)] <- t(Sigma)[upper.tri(Sigma)]
     if ((sum(eigen(Sigma)$val<0)==d)) 
       break()
@@ -405,7 +410,7 @@ corr_from_pcor <- replicate(n,{
 
 #1.1.2 Sample Data given priors
 
-m <- 10 #how many datapoints per iteration.
+m <- 4 #how many datapoints per iteration.
 #We use m-1 observations to fit the model and then compare
 #sample from predicted (from model) with remaining obs
 Data_mat<-matrix(0, nrow=(n*m), ncol=d)
@@ -501,6 +506,8 @@ for(i in 1:n){
 mean(resid_vec_ourmod[complete.cases(resid_vec_ourmod)])
 
 #hist
+
+pcor2cor()
 hist(paramat[,7])
 hist(paramat[,8])
 hist(paramat[,9])
@@ -516,8 +523,8 @@ burninit<-5000
 for(i in 1:n){
   y <- Data_mat[(((i-1)*m)+1):(i*m - 1), 1]
   X <- Data_mat[(((i-1)*m)+1):(i*m - 1), 2:d]
-  mod_obj <- blasso(X, y, T=burninit) #needs to sample atleast 2 observations for some reason
-  betas<-mod_obj$beta[burninit,] #deleting first observation in each object
+  mod_obj <- blasso(X, y, T=burninit)
+  betas<-mod_obj$beta[burninit,] 
   mu_blasso<-mod_obj$mu[burninit]
   sigmasq_blasso <- mod_obj$s2[burninit]
   pred <- rnorm(1, mean = mu_blasso + mth_obs[i,2:d] %*% betas, 
