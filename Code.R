@@ -290,6 +290,10 @@ for(i in 1:n){
 
 #3 Estimate parameters
 
+improved_target_dens<-function(theta,s){
+  
+}
+
 target_dens<-function(theta, x){
   d <- (1/2) * (sqrt(8 * length(theta) + 9) - 3) #integer solution to equation len(theta) = d/2 * (3+d)
   mu<-theta[1:d]
@@ -312,7 +316,7 @@ target_dens<-function(theta, x){
       Sigma <- diag(margvar) %*% corrmat %*% diag(margvar)
   
       logdens <- dmvnorm(x, mean=mu, sigma=Sigma, log=TRUE)
-      logprior <- -2 * sum(log(margvar))
+      logprior <- -3/2 * sum(log(margvar))
       sum(logdens) + logprior
     }
     
