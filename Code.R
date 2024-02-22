@@ -249,8 +249,8 @@ seq(from=1/(m+1), to=m/(m+1), by=1/(m+1)) #Expected under t dist
 set.seed(2)
 
 #1: Sample n priors
-n<-100
-d<-4 #dimension
+n<-1000
+d<-3 #dimension
 
 muvec<-rep(0,d)
 sigmavec<-rep(1,d)
@@ -312,7 +312,7 @@ target_dens<-function(theta, x){
       Sigma <- diag(margvar) %*% corrmat %*% diag(margvar)
   
       logdens <- dmvnorm(x, mean=mu, sigma=Sigma, log=TRUE)
-      logprior<- -2 * sum(log(margvar))
+      logprior <- -2 * sum(log(margvar))
       sum(logdens) + logprior
     }
     
@@ -322,7 +322,7 @@ target_dens<-function(theta, x){
 
 init <- c(rep(0,d), rep(1,d), rep(0, d*(d-1)/2))
 para_len <- length(init)
-mcmcsamps <- 100
+mcmcsamps <- 10
 paramat <- matrix(NA, nrow=n*mcmcsamps, ncol=para_len)
 
 for(i in 1:n){
@@ -335,12 +335,30 @@ for(i in 1:n){
   }, error=function(e){})
 }
 
+
 #4: simulate predictive samples given samples from posterior
 
 mu_1<-paramat[,1]
 n_missing_rows<-sum(ifelse(is.na(mu_1[is.na(mu_1)]), 1, 0))
 n <- n - n_missing_rows/mcmcsamps
 paramat<-paramat[complete.cases(paramat),]
+
+#4.1 Transforming partial corrs to corrs
+
+for(i in 1:n){
+  theta <- paramat[i,]
+  margvar<-theta[(d+1):(d*2)]
+  parcorrs<-theta[((d*2)+1):((d*2) + d*(d-1)/2)]
+  parcorrmat <- diag(-1, nrow=d)
+  parcorrmat[lower.tri(parcorrmat)==TRUE] <- parcorrs
+  parcorrmat <- parcorrmat + t(parcorrmat) - diag(diag(parcorrmat))
+    
+  S <- - parcorrmat
+  S_inv <- solve(S)
+  D_S_inv <- solve(diag(sqrt(diag(S_inv))))
+  corrmat <- (D_S_inv %*% S_inv %*% D_S_inv)
+  paramat[i, ((d*2)+1):((d*2) + d*(d-1)/2)] <- corrmat[lower.tri(corrmat)==TRUE]
+}
 
 
 npredsamp <- 1
@@ -385,7 +403,7 @@ rowMeans(probmat)
 set.seed(1)
 
 #1.1.1: Sample n priors
-n<-500
+n<-1000
 d<-3 #dimension
 
 muvec<-rep(0,d)
@@ -456,6 +474,23 @@ n <- n - n_missing_rows
 paramat <- paramat[complete.cases(paramat),]
 
 
+# Transforming partial corrs to corrs
+
+for(i in 1:n){
+  theta <- paramat[i,]
+  margvar<-theta[(d+1):(d*2)]
+  parcorrs<-theta[((d*2)+1):((d*2) + d*(d-1)/2)]
+  parcorrmat <- diag(-1, nrow=d)
+  parcorrmat[lower.tri(parcorrmat)==TRUE] <- parcorrs
+  parcorrmat <- parcorrmat + t(parcorrmat) - diag(diag(parcorrmat))
+  
+  S <- - parcorrmat
+  S_inv <- solve(S)
+  D_S_inv <- solve(diag(sqrt(diag(S_inv))))
+  corrmat <- (D_S_inv %*% S_inv %*% D_S_inv)
+  paramat[i, ((d*2)+1):((d*2) + d*(d-1)/2)] <- corrmat[lower.tri(corrmat)==TRUE]
+}
+
 #1.1.4 predictive simulations
 npredsamp <- 1
 predsamps <- matrix(NA, nrow=(mcmcsamps*n*npredsamp), ncol=d)
@@ -506,8 +541,6 @@ for(i in 1:n){
 mean(resid_vec_ourmod[complete.cases(resid_vec_ourmod)])
 
 #hist
-
-pcor2cor()
 hist(paramat[,7])
 hist(paramat[,8])
 hist(paramat[,9])
@@ -565,7 +598,7 @@ for(i in 1:n){
 }
 
 # Generating X
-m <- 100
+m <- 10
 
 muvec<-rep(0,p)
 sigmavec<-rep(1,p)
@@ -662,6 +695,23 @@ n_missing_rows <- sum(ifelse(cond, 1, 0))
 n <- n - n_missing_rows
 paramat <- paramat[complete.cases(paramat),]
 
+# Transforming partial corrs to corrs
+
+for(i in 1:n){
+  theta <- paramat[i,]
+  margvar<-theta[(d+1):(d*2)]
+  parcorrs<-theta[((d*2)+1):((d*2) + d*(d-1)/2)]
+  parcorrmat <- diag(-1, nrow=d)
+  parcorrmat[lower.tri(parcorrmat)==TRUE] <- parcorrs
+  parcorrmat <- parcorrmat + t(parcorrmat) - diag(diag(parcorrmat))
+  
+  S <- - parcorrmat
+  S_inv <- solve(S)
+  D_S_inv <- solve(diag(sqrt(diag(S_inv))))
+  corrmat <- (D_S_inv %*% S_inv %*% D_S_inv)
+  paramat[i, ((d*2)+1):((d*2) + d*(d-1)/2)] <- corrmat[lower.tri(corrmat)==TRUE]
+}
+
 
 npredsamp <- 1
 predsamps <- matrix(NA, nrow=(mcmcsamps*n*npredsamp), ncol=d)
@@ -678,7 +728,7 @@ for(i in 1:(mcmcsamps*n)){
   predsamps[i,] <- rmvnorm(1, mean=theta[1:d], sigma=Sigma)
 }
 
-#1.1.5 residuals in 1 dimension
+#1.2.4 residuals in 1 dimension
 
 resid_vec_ourmod<-rep(NA, mcmcsamps*n*npredsamp)
 for(i in 1:n){
@@ -708,8 +758,10 @@ for(i in 1:n){
   }
 }
 
-resid_vec_ourmod <- resid_vec_ourmod[complete.cases(resid_vec_ourmod)]
-mean(resid_vec_ourmod^2)
+resid_vec_ourmod_cleaned <- resid_vec_ourmod[complete.cases(resid_vec_ourmod)]
+mean(resid_vec_ourmod_cleaned^2)
+
+
 
 par(mfrow=c(3,3))
 hist(paramat[,1], breaks=100, main="mu_1")
@@ -722,4 +774,5 @@ hist(paramat[,7], breaks=100, main="rho_12")
 hist(paramat[,8], breaks=100, main="rho_13")
 hist(paramat[,9], breaks=100, main="rho_23")
 
-mean(paramat[,6])
+colMeans(paramat)
+
