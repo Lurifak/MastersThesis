@@ -246,10 +246,10 @@ seq(from=1/(m+1), to=m/(m+1), by=1/(m+1)) #Expected under t dist
 
 #General check of predictive distribution for >= 3 dimensions
 
-set.seed(2)
+set.seed(1)
 
 #1: Sample n priors
-n<-100
+n<-1000
 d<-3 #dimension
 
 muvec<-rep(0,d)
@@ -348,7 +348,7 @@ target_dens<-function(theta, x){
 }
 
 init <- c(rep(1,d), rep(0, d*(d-1)/2))
-para_len <- length(init)
+para_len <- length(init) + d
 mcmcsamps <- 10
 paramat <- matrix(NA, nrow=n*mcmcsamps, ncol=para_len)
 
@@ -365,22 +365,24 @@ paramat <- matrix(NA, nrow=n*mcmcsamps, ncol=para_len)
 for(i in 1:n){
   block <- Data_mat[((i-1)*m+1):(i*m),]
   
-  #tryCatch({
+  tryCatch({
     sigma_pcor <- MCMCmetrop1R(improved_target_dens, theta.init=init, x=block, mcmc=mcmcsamps)
-    parcorrs<-sigma_pcor[,(d+1):length(sigma_pcor)]
-    parcorrmat <- diag(-1, nrow=d)
-    parcorrmat[lower.tri(parcorrmat)==TRUE] <- parcorrs
-    parcorrmat <- parcorrmat + t(parcorrmat) - diag(diag(parcorrmat))
-    S <- - parcorrmat
-    S_inv <- solve(S)
-    D_S_inv <- solve(diag(sqrt(diag(S_inv))))
-    corrmat <-(D_S_inv %*% S_inv %*% D_S_inv)
-    Sigma <- diag(margvar) %*% corrmat %*% diag(margvar)
-    
-    mu <- rmvnorm(mcmcsamps, mean=colMeans(block), sigma=Sigma)
-    
-    paramat[(1 + (i-1)*mcmcsamps):(i*mcmcsamps),] <- c(mu, sigma_pcor)
-  #}, error=function(e){})
+    mu <- matrix(NA, nrow=mcmcsamps, ncol=d)
+    for(j in 1:mcmcsamps){
+      parcorrs <- sigma_pcor[j,(d+1):ncol(sigma_pcor)]
+      sigmas<-sigma_pcor[j,1:d]
+      parcorrmat <- diag(-1, nrow=d)
+      parcorrmat[lower.tri(parcorrmat)==TRUE] <- parcorrs
+      parcorrmat <- parcorrmat + t(parcorrmat) - diag(diag(parcorrmat))
+      S <- - parcorrmat
+      S_inv <- solve(S)
+      D_S_inv <- solve(diag(sqrt(diag(S_inv))))
+      corrmat <- (D_S_inv %*% S_inv %*% D_S_inv)
+      Sigma <- diag(sigmas) %*% corrmat %*% diag(sigmas)
+      mu[j,] <- rmvnorm(1, mean=colMeans(block), sigma=Sigma)
+    }
+    paramat[(1 + (i-1)*mcmcsamps):(i*mcmcsamps),] <- cbind(mu, sigma_pcor)
+  }, error=function(e){})
 }
 
 
