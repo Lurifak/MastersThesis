@@ -249,7 +249,7 @@ seq(from=1/(m+1), to=m/(m+1), by=1/(m+1)) #Expected under t dist
 set.seed(2)
 
 #1: Sample n priors
-n<-1000
+n<-100
 d<-3 #dimension
 
 muvec<-rep(0,d)
@@ -290,9 +290,32 @@ for(i in 1:n){
 
 #3 Estimate parameters
 
-improved_target_dens<-function(theta,s){
-  
+improved_target_dens<-function(theta,x){
+  Samp_cov <- cov(x)
+  d <- -1/2 + sqrt(1/4 + 2 * length(theta))
+  sigma <- theta[1:d]
+  parcorrs <- theta[(d+1):length(theta)]
+  if(any(sigma<=0)){-Inf}
+  else{
+    parcorrmat <- diag(-1, nrow=d)
+    parcorrmat[lower.tri(parcorrmat)==TRUE] <- parcorrs
+    parcorrmat <- parcorrmat + t(parcorrmat) - diag(diag(parcorrmat))
+    
+    if ((sum(eigen(parcorrmat)$val<0)==d)){ # if partial corr mat is negative definite
+      S <- - parcorrmat
+      
+      S_inv <- solve(S)
+      
+      #calculating precision matrix
+      
+      Sigma_inv <- diag(1/sigma) %*% diag(sqrt(diag(S_inv))) %*% S %*% diag(sqrt(diag(S_inv))) %*% diag(1/sigma)
+      
+      -((n-1)/2) * (log(1/det(Sigma_inv)) + sum(diag(Sigma_inv %*% Samp_cov))) - sum(log(sigma))
+    }
+    else{-Inf}
+  }
 }
+
 
 target_dens<-function(theta, x){
   d <- (1/2) * (sqrt(8 * length(theta) + 9) - 3) #integer solution to equation len(theta) = d/2 * (3+d)
@@ -324,19 +347,40 @@ target_dens<-function(theta, x){
   }
 }
 
-init <- c(rep(0,d), rep(1,d), rep(0, d*(d-1)/2))
+init <- c(rep(1,d), rep(0, d*(d-1)/2))
 para_len <- length(init)
 mcmcsamps <- 10
 paramat <- matrix(NA, nrow=n*mcmcsamps, ncol=para_len)
 
-for(i in 1:n){
-  block <- Data_mat[((i-1)*m+1):(i*m),]
-  print(i)
+#for(i in 1:n){
+  #block <- Data_mat[((i-1)*m+1):(i*m),]
+  #print(i)
   #Skipping iteration if error - happens rarely (~ 1% chance per iteration)
   #Assuming this should not change the samples drastically
-  tryCatch({
-  paramat[(1 + (i-1)*mcmcsamps):(i*mcmcsamps),] <- MCMCmetrop1R(target_dens, theta.init=init, x=block, mcmc=mcmcsamps)
-  }, error=function(e){})
+  #tryCatch({
+  #paramat[(1 + (i-1)*mcmcsamps):(i*mcmcsamps),] <- MCMCmetrop1R(target_dens, theta.init=init, x=block, mcmc=mcmcsamps)
+  #}, error=function(e){})
+#}
+
+for(i in 1:n){
+  block <- Data_mat[((i-1)*m+1):(i*m),]
+  
+  #tryCatch({
+    sigma_pcor <- MCMCmetrop1R(improved_target_dens, theta.init=init, x=block, mcmc=mcmcsamps)
+    parcorrs<-sigma_pcor[,(d+1):length(sigma_pcor)]
+    parcorrmat <- diag(-1, nrow=d)
+    parcorrmat[lower.tri(parcorrmat)==TRUE] <- parcorrs
+    parcorrmat <- parcorrmat + t(parcorrmat) - diag(diag(parcorrmat))
+    S <- - parcorrmat
+    S_inv <- solve(S)
+    D_S_inv <- solve(diag(sqrt(diag(S_inv))))
+    corrmat <-(D_S_inv %*% S_inv %*% D_S_inv)
+    Sigma <- diag(margvar) %*% corrmat %*% diag(margvar)
+    
+    mu <- rmvnorm(mcmcsamps, mean=colMeans(block), sigma=Sigma)
+    
+    paramat[(1 + (i-1)*mcmcsamps):(i*mcmcsamps),] <- c(mu, sigma_pcor)
+  #}, error=function(e){})
 }
 
 
