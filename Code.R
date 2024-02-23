@@ -60,10 +60,74 @@ hist.trunc(exp(chain[,3])^2, 10, .1)
 curve(dinvgamma(x, shape=1/2, scale=1/4), add=TRUE)
 
 
-jacob_pcor_resp_cor <- function(corrmat){
-  
+improved_target_dens<-function(theta,x){
+  Samp_cov <- cov(x)
+  d <- -1/2 + sqrt(1/4 + 2 * length(theta))
+  sigma <- theta[1:d]
+  parcorrs <- theta[(d+1):length(theta)]
+  if(any(sigma<=0)){-Inf}
+  else{
+    parcorrmat <- diag(-1, nrow=d)
+    parcorrmat[lower.tri(parcorrmat)==TRUE] <- parcorrs
+    parcorrmat <- parcorrmat + t(parcorrmat) - diag(diag(parcorrmat))
+    
+    if ((sum(eigen(parcorrmat)$val<0)==d)){ # if partial corr mat is negative definite
+      S <- - parcorrmat
+      S_inv <- solve(S)
+      #calculating precision matrix
+      Sigma_inv <- diag(1/sigma) %*% diag(sqrt(diag(S_inv))) %*% S %*% diag(sqrt(diag(S_inv))) %*% diag(1/sigma)
+      -((n-1)/2) * (log(1/det(Sigma_inv)) + sum(diag(Sigma_inv %*% Samp_cov))) - sum(log(sigma))
+    }
+    else{-Inf}
+  }
 }
 
+
+corr_from_pcor<-function(n, d){
+  Sigma <- - diag(d)
+  replicate(n,{
+    repeat{
+      u <- runif(d*(d-1)/2, -1, 1)
+      Sigma[lower.tri(Sigma)] <- u #partial corrs
+      Sigma[upper.tri(Sigma)] <- t(Sigma)[upper.tri(Sigma)]
+      if ((sum(eigen(Sigma)$val<0)==d)) 
+        break()
+    }
+    # Lemma 2 from Artner 2022 space of partial correlation matrices to convert to correlation matrix
+    S <- - Sigma
+    S_inv <- solve(S)
+    D_S_inv <- solve(diag(sqrt(diag(S_inv))))
+    (D_S_inv %*% S_inv %*% D_S_inv)[lower.tri(S_inv)==TRUE]
+  })
+}
+
+metrop_samp <- function(n, m, para_len, init, Data_mat, mcmcsamps, target_dens, burn=500, holdout=FALSE){
+  paramat <- matrix(NA, nrow=n*mcmcsamps, ncol=para_len)
+  if(holdout==FALSE){t <- m} #use all data to sample from posterior
+  else{t <- m-1} #do not use mth observation
+  for(i in 1:n){
+    block <- Data_mat[((i-1)*m+1):(i*t),]
+    tryCatch({
+      sigma_pcor <- MCMCmetrop1R(improved_target_dens, theta.init=init, burnin = burn, x=block, mcmc=mcmcsamps)
+      mu <- matrix(NA, nrow=mcmcsamps, ncol=d)
+      for(j in 1:mcmcsamps){
+        parcorrs <- sigma_pcor[j,(d+1):ncol(sigma_pcor)]
+        sigmas<-sigma_pcor[j,1:d]
+        parcorrmat <- diag(-1, nrow=d)
+        parcorrmat[lower.tri(parcorrmat)==TRUE] <- parcorrs
+        parcorrmat <- parcorrmat + t(parcorrmat) - diag(diag(parcorrmat))
+        S <- - parcorrmat
+        S_inv <- solve(S)
+        D_S_inv <- solve(diag(sqrt(diag(S_inv))))
+        corrmat <- (D_S_inv %*% S_inv %*% D_S_inv)
+        Sigma <- diag(sigmas) %*% corrmat %*% diag(sigmas)
+        mu[j,] <- rmvnorm(1, mean=colMeans(block), sigma=Sigma)
+      }
+      paramat[(1 + (i-1)*mcmcsamps):(i*mcmcsamps),] <- cbind(mu, sigma_pcor)
+    }, error=function(e){})
+  }
+  return(paramat)
+}
 
 
 #Berger & Sun 2008, Accept-Reject bivariate normal
@@ -248,39 +312,26 @@ seq(from=1/(m+1), to=m/(m+1), by=1/(m+1)) #Expected under t dist
 
 set.seed(1)
 
-#1: Sample n priors
-n<-1000
+#1: Sample priors
+n<-1000 #samples
 d<-3 #dimension
 
 muvec<-rep(0,d)
 sigmavec<-rep(1,d)
 
-Sigma <- - diag(d) #starting to build partial correlation matrix
-corr_from_pcor <- replicate(n,{
-  repeat{
-    u <- runif(d*(d-1)/2, -1, 1)
-    Sigma[lower.tri(Sigma)] <- u
-    Sigma[upper.tri(Sigma)] <- t(Sigma)[upper.tri(Sigma)]
-    if ((sum(eigen(Sigma)$val<0)==d)) 
-      break()
-  }
-  # Lemma 2 from Artner 2022 space of partial correlation matrices to convert to correlation matrix
-  S <- - Sigma
-  S_inv <- solve(S)
-  D_S_inv <- solve(diag(sqrt(diag(S_inv))))
-  (D_S_inv %*% S_inv %*% D_S_inv)[lower.tri(S_inv)==TRUE]
-})
+#Sampling n realizations of correlations with uniform marginals
+corrs <- corr_from_pcor(n,d)
 
 
 #2 Sample Data given priors
 
-m <- 5 #how many datapoints per iteration
+m <- 5 #how many datapoints we use to estimate the posterior sample
 Data_mat<-matrix(0, nrow=(n*m), ncol=d)
 
 
 for(i in 1:n){
   corrmat <- diag(1, nrow=d)
-  corrmat[lower.tri(corrmat)==TRUE] <- corr_from_pcor[,i]
+  corrmat[lower.tri(corrmat)==TRUE] <- corrs[,i]
   corrmat <- corrmat + t(corrmat) - diag(diag(corrmat))
   Sigma <- diag(sigmavec) %*% corrmat %*% diag(sigmavec)
   #Output
@@ -289,32 +340,6 @@ for(i in 1:n){
 }
 
 #3 Estimate parameters
-
-improved_target_dens<-function(theta,x){
-  Samp_cov <- cov(x)
-  d <- -1/2 + sqrt(1/4 + 2 * length(theta))
-  sigma <- theta[1:d]
-  parcorrs <- theta[(d+1):length(theta)]
-  if(any(sigma<=0)){-Inf}
-  else{
-    parcorrmat <- diag(-1, nrow=d)
-    parcorrmat[lower.tri(parcorrmat)==TRUE] <- parcorrs
-    parcorrmat <- parcorrmat + t(parcorrmat) - diag(diag(parcorrmat))
-    
-    if ((sum(eigen(parcorrmat)$val<0)==d)){ # if partial corr mat is negative definite
-      S <- - parcorrmat
-      
-      S_inv <- solve(S)
-      
-      #calculating precision matrix
-      
-      Sigma_inv <- diag(1/sigma) %*% diag(sqrt(diag(S_inv))) %*% S %*% diag(sqrt(diag(S_inv))) %*% diag(1/sigma)
-      
-      -((n-1)/2) * (log(1/det(Sigma_inv)) + sum(diag(Sigma_inv %*% Samp_cov))) - sum(log(sigma))
-    }
-    else{-Inf}
-  }
-}
 
 
 target_dens<-function(theta, x){
@@ -350,7 +375,6 @@ target_dens<-function(theta, x){
 init <- c(rep(1,d), rep(0, d*(d-1)/2))
 para_len <- length(init) + d
 mcmcsamps <- 10
-paramat <- matrix(NA, nrow=n*mcmcsamps, ncol=para_len)
 
 #for(i in 1:n){
   #block <- Data_mat[((i-1)*m+1):(i*m),]
@@ -362,29 +386,7 @@ paramat <- matrix(NA, nrow=n*mcmcsamps, ncol=para_len)
   #}, error=function(e){})
 #}
 
-for(i in 1:n){
-  block <- Data_mat[((i-1)*m+1):(i*m),]
-  
-  tryCatch({
-    sigma_pcor <- MCMCmetrop1R(improved_target_dens, theta.init=init, x=block, mcmc=mcmcsamps)
-    mu <- matrix(NA, nrow=mcmcsamps, ncol=d)
-    for(j in 1:mcmcsamps){
-      parcorrs <- sigma_pcor[j,(d+1):ncol(sigma_pcor)]
-      sigmas<-sigma_pcor[j,1:d]
-      parcorrmat <- diag(-1, nrow=d)
-      parcorrmat[lower.tri(parcorrmat)==TRUE] <- parcorrs
-      parcorrmat <- parcorrmat + t(parcorrmat) - diag(diag(parcorrmat))
-      S <- - parcorrmat
-      S_inv <- solve(S)
-      D_S_inv <- solve(diag(sqrt(diag(S_inv))))
-      corrmat <- (D_S_inv %*% S_inv %*% D_S_inv)
-      Sigma <- diag(sigmas) %*% corrmat %*% diag(sigmas)
-      mu[j,] <- rmvnorm(1, mean=colMeans(block), sigma=Sigma)
-    }
-    paramat[(1 + (i-1)*mcmcsamps):(i*mcmcsamps),] <- cbind(mu, sigma_pcor)
-  }, error=function(e){})
-}
-
+paramat <- metrop_samp(n, m, para_len, init, Data_mat, mcmcsamps, improved_target_dens)
 
 #4: simulate predictive samples given samples from posterior
 
@@ -453,28 +455,13 @@ rowMeans(probmat)
 set.seed(1)
 
 #1.1.1: Sample n priors
-n<-1000
+n<-100
 d<-3 #dimension
 
 muvec<-rep(0,d)
 sigmavec<-rep(1,d)
 
-Sigma <- - diag(d) #starting to build partial correlation matrix
-
-corr_from_pcor <- replicate(n,{
-  repeat{
-    u <- runif(d*(d-1)/2, -1, 1)
-    Sigma[lower.tri(Sigma)] <- u #partial corrs
-    Sigma[upper.tri(Sigma)] <- t(Sigma)[upper.tri(Sigma)]
-    if ((sum(eigen(Sigma)$val<0)==d)) 
-      break()
-  }
-  # Lemma 2 from Artner 2022 space of partial correlation matrices to convert to correlation matrix
-  S <- - Sigma
-  S_inv <- solve(S)
-  D_S_inv <- solve(diag(sqrt(diag(S_inv))))
-  (D_S_inv %*% S_inv %*% D_S_inv)[lower.tri(S_inv)==TRUE]
-})
+corrs <- corr_from_pcor(n,d)
 
 #1.1.2 Sample Data given priors
 
@@ -486,10 +473,9 @@ mth_obs<-matrix(NA, nrow = n, ncol=d) #holdout observations
 
 for(i in 1:n){
   corrmat <- diag(1, nrow=d)
-  corrmat[lower.tri(corrmat)==TRUE] <- corr_from_pcor[,i]
+  corrmat[lower.tri(corrmat)==TRUE] <- corrs[,i]
   corrmat <- corrmat + t(corrmat) - diag(diag(corrmat))
   Sigma <- diag(sigmavec) %*% corrmat %*% diag(sigmavec)
-  
   
   Data_mat[(((i-1)*m)+1):(i*m),] <- rmvnorm(m, mean=muvec, sigma=Sigma)
   mth_obs[i,]<-Data_mat[(i*m),]
@@ -498,20 +484,13 @@ for(i in 1:n){
 
 #1.1.3 posterior sampling
 
-init <- c(rep(0,d), rep(1,d), rep(0, d*(d-1)/2))
-para_len <- length(init)
+init <- c(rep(1,d), rep(0, d*(d-1)/2))
+para_len <- length(init) + d
 mcmcsamps <- 10
 burnin_mcmc <- 2000
-paramat <- matrix(NA, nrow=n*mcmcsamps, ncol=para_len)
 
-for(i in 1:n){
-  block<-Data_mat[((i-1)*m+1):(i*(m-1)),] #do not use mth observation
-  #Skipping iteration if error - happens rarely (~ 1-2% chance per iteration)
-  #Assuming this should not change the samples drastically
-  tryCatch({
-    paramat[(1 + (i-1)*mcmcsamps):(i*mcmcsamps),] <- MCMCmetrop1R(target_dens, theta.init=init, burnin=burnin_mcmc, x=block, mcmc=mcmcsamps)
-  }, error=function(e){})
-}
+paramat <- metrop_samp(n, m, para_len, init, Data_mat, mcmcsamps, 
+                       improved_target_dens, burn=burnin_mcmc, holdout=TRUE)
 
 
 mu_1<-paramat[,1]
@@ -602,7 +581,7 @@ mean(paramat[,9])
 #1.1.6 Bayesian lasso
 
 resid_vec_blasso<-rep(NA, n*npredsamp)
-burninit<-5000
+burninit<-10000
 for(i in 1:n){
   y <- Data_mat[(((i-1)*m)+1):(i*m - 1), 1]
   X <- Data_mat[(((i-1)*m)+1):(i*m - 1), 2:d]
@@ -653,22 +632,7 @@ m <- 10
 muvec<-rep(0,p)
 sigmavec<-rep(1,p)
 
-Sigma <- - diag(p) #starting to build partial correlation matrix
-corr_from_pcor <- replicate(n,{
-  repeat{
-    u <- runif(p*(p-1)/2, -1, 1)
-    Sigma[lower.tri(Sigma)] <- u
-    Sigma[upper.tri(Sigma)] <- t(Sigma)[upper.tri(Sigma)]
-    if ((sum(eigen(Sigma)$val<0)==p)) 
-      break()
-  }
-  # Lemma 2 from Artner 2022 to convert to correlation matrix
-  # strangely: works more often than built-in library pcor2cor
-  S <- - Sigma
-  S_inv <- solve(S)
-  D_S_inv <- solve(diag(sqrt(diag(S_inv))))
-  (D_S_inv %*% S_inv %*% D_S_inv)[lower.tri(S_inv)==TRUE]
-})
+corrs <- corr_from_pcor(n, d)
 
 fulldata <- matrix(NA, nrow=(m*n), ncol = p)
 mth_obs <- matrix(NA, nrow=n, ncol = d)
@@ -676,7 +640,7 @@ mth_obs <- matrix(NA, nrow=n, ncol = d)
 for(i in 1:n){
   
   corrmat <- diag(1, nrow=p)
-  corrmat[lower.tri(corrmat)==TRUE] <- if(p==2){corr_from_pcor[i]}else{corr_from_pcor[i,]}
+  corrmat[lower.tri(corrmat)==TRUE] <- if(p==2){corrs[i]}else{corrs[i,]}
   corrmat <- corrmat + t(corrmat) - diag(diag(corrmat))
   Sigma <- diag(sigmavec) %*% corrmat %*% diag(sigmavec)
   fulldata[(1 + ((i-1)*m)):(i*m),] <- rmvnorm(m, muvec, Sigma)
@@ -721,20 +685,14 @@ mean(resid_vec_blasso^2)
 
 #1.2.3 Our model
 
-init <- c(rep(0,d), rep(1,d), rep(0, d*(d-1)/2)) #means, marginal variances and p. correlations
-para_len <- length(init)
+init <- c(rep(1,d), rep(0, d*(d-1)/2))
+para_len <- length(init) + d
 mcmcsamps <- 10
 burnin_mcmc <- 2000
-paramat <- matrix(NA, nrow=n*mcmcsamps, ncol=para_len)
 
-for(i in 1:n){
-  block<-Data_mat[((i-1)*m+1):(i*(m-1)),] #does not use mth observation
-  #Skipping iteration if error - happens rarely (~ 1-2% chance per iteration)
-  #Assuming this should not change the samples drastically
-  tryCatch({
-    paramat[(1 + (i-1)*mcmcsamps):(i*mcmcsamps),] <- MCMCmetrop1R(target_dens, theta.init=init, burnin=burnin_mcmc, x=block, mcmc=mcmcsamps)
-  }, error=function(e){})
-}
+paramat <- metrop_samp(n, m, para_len, init, Data_mat, mcmcsamps, 
+                       improved_target_dens, burn=burnin_mcmc, holdout=TRUE)
+
 
 mu_1<-paramat[,1]
 #removing crashed samples
