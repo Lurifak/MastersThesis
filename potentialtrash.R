@@ -100,3 +100,62 @@ partialcorr <- replicate(10000,{
 })
 
 toeplitz(c(-1,partialcorr[,1]))
+
+
+n <- 3
+Sigma <- diag(n)
+partialcorr <- replicate(10000,{
+  repeat{
+    u <- runif(n*(n-1)/2, -1, 1)
+    Sigma[lower.tri(Sigma)] <- u
+    Sigma[upper.tri(Sigma)] <- t(Sigma)[upper.tri(Sigma)]
+    if (sum(eigen(Sigma)$val>0)==n)  
+      break()
+  }
+  P <- solve(Sigma)
+  D <- diag(1/sqrt(diag(P)))
+  (D %*% P %*% D)[lower.tri(P)]
+})
+
+
+
+#for(i in 1:n){
+#block <- Data_mat[((i-1)*m+1):(i*m),]
+#print(i)
+#Skipping iteration if error - happens rarely (~ 1% chance per iteration)
+#Assuming this should not change the samples drastically
+#tryCatch({
+#paramat[(1 + (i-1)*mcmcsamps):(i*mcmcsamps),] <- MCMCmetrop1R(target_dens, theta.init=init, x=block, mcmc=mcmcsamps)
+#}, error=function(e){})
+#}
+
+
+target_dens<-function(theta, x){
+  d <- (1/2) * (sqrt(8 * length(theta) + 9) - 3) #integer solution to equation len(theta) = d/2 * (3+d)
+  mu<-theta[1:d]
+  margvar<-theta[(d+1):(d*2)]
+  if(any(margvar<=0)){
+    -Inf
+  }
+  else{
+    parcorrs<-theta[((d*2)+1):((d*2) + d*(d-1)/2)]
+    parcorrmat <- diag(-1, nrow=d)
+    parcorrmat[lower.tri(parcorrmat)==TRUE] <- parcorrs
+    parcorrmat <- parcorrmat + t(parcorrmat) - diag(diag(parcorrmat))
+    
+    
+    if ((sum(eigen(parcorrmat)$val<0)==d)){ # if partial corr mat is negative definite
+      S <- - parcorrmat
+      S_inv <- solve(S)
+      D_S_inv <- solve(diag(sqrt(diag(S_inv))))
+      corrmat <-(D_S_inv %*% S_inv %*% D_S_inv)
+      Sigma <- diag(margvar) %*% corrmat %*% diag(margvar)
+      
+      logdens <- dmvnorm(x, mean=mu, sigma=Sigma, log=TRUE)
+      logprior <- -3/2 * sum(log(margvar))
+      sum(logdens) + logprior
+    }
+    
+    else{-Inf}
+  }
+}
