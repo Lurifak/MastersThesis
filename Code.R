@@ -313,8 +313,8 @@ seq(from=1/(m+1), to=m/(m+1), by=1/(m+1)) #Expected under t dist
 set.seed(1)
 
 #1: Sample priors
-n<-1000 #samples
-d<-3 #dimension
+n <- 100 #samples
+d <- 3 #dimension
 
 muvec<-rep(0,d)
 sigmavec<-rep(1,d)
@@ -341,50 +341,27 @@ for(i in 1:n){
 
 #3 Estimate parameters
 
-
-target_dens<-function(theta, x){
-  d <- (1/2) * (sqrt(8 * length(theta) + 9) - 3) #integer solution to equation len(theta) = d/2 * (3+d)
-  mu<-theta[1:d]
-  margvar<-theta[(d+1):(d*2)]
-  if(any(margvar<=0)){
-    -Inf
-  }
-  else{
-    parcorrs<-theta[((d*2)+1):((d*2) + d*(d-1)/2)]
-    parcorrmat <- diag(-1, nrow=d)
-    parcorrmat[lower.tri(parcorrmat)==TRUE] <- parcorrs
-    parcorrmat <- parcorrmat + t(parcorrmat) - diag(diag(parcorrmat))
-  
-  
-    if ((sum(eigen(parcorrmat)$val<0)==d)){ # if partial corr mat is negative definite
-      S <- - parcorrmat
-      S_inv <- solve(S)
-      D_S_inv <- solve(diag(sqrt(diag(S_inv))))
-      corrmat <-(D_S_inv %*% S_inv %*% D_S_inv)
-      Sigma <- diag(margvar) %*% corrmat %*% diag(margvar)
-  
-      logdens <- dmvnorm(x, mean=mu, sigma=Sigma, log=TRUE)
-      logprior <- -3/2 * sum(log(margvar))
-      sum(logdens) + logprior
-    }
-    
-    else{-Inf}
-  }
-}
-
 init <- c(rep(1,d), rep(0, d*(d-1)/2))
 para_len <- length(init) + d
 mcmcsamps <- 10
 
-#for(i in 1:n){
-  #block <- Data_mat[((i-1)*m+1):(i*m),]
-  #print(i)
-  #Skipping iteration if error - happens rarely (~ 1% chance per iteration)
-  #Assuming this should not change the samples drastically
-  #tryCatch({
-  #paramat[(1 + (i-1)*mcmcsamps):(i*mcmcsamps),] <- MCMCmetrop1R(target_dens, theta.init=init, x=block, mcmc=mcmcsamps)
-  #}, error=function(e){})
-#}
+#3.1 Diagnostics (compute ESS, trace plots, etc... for different blocks)
+
+diagnostic_obj_3 <- MCMCmetrop1R(improved_target_dens, theta.init=init, 
+                               burnin = 1000, x=Data_mat[7:9,], mcmc=100000)
+plot(diagnostic_obj_3) #trace plots not convincing for correlations with m=d
+
+diagnostic_obj_4 <- MCMCmetrop1R(improved_target_dens, theta.init=init, 
+                                 burnin = 2000, x=Data_mat[1:4,], mcmc=100000)
+
+plot(diagnostic_obj_4) #trace plots very convincing for m >= d + 1
+
+diagnostic_obj_50 <- MCMCmetrop1R(improved_target_dens, theta.init=init, burnin = 2000,
+                                  x=rmvnorm(50, mean=muvec, sigma=diag(sigmavec)), mcmc=100000)
+
+plot(diagnostic_obj_50)
+
+#3.2 
 
 paramat <- metrop_samp(n, m, para_len, init, Data_mat, mcmcsamps, improved_target_dens)
 
@@ -468,6 +445,7 @@ corrs <- corr_from_pcor(n,d)
 m <- 4 #how many datapoints per iteration.
 #We use m-1 observations to fit the model and then compare
 #sample from predicted (from model) with remaining obs
+
 Data_mat<-matrix(0, nrow=(n*m), ncol=d)
 mth_obs<-matrix(NA, nrow = n, ncol=d) #holdout observations
 
@@ -484,7 +462,7 @@ for(i in 1:n){
 
 #1.1.3 posterior sampling
 
-init <- c(rep(1,d), rep(0, d*(d-1)/2))
+init <- c(rep(1,d), rep(0, d*(d-1)/2)) #initialization for c(sigma, parcorr) in MCMC
 para_len <- length(init) + d
 mcmcsamps <- 10
 burnin_mcmc <- 2000
