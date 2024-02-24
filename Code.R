@@ -3,6 +3,7 @@ library(mvtnorm)
 library(corpcor)
 library(clusterGeneration)
 library(monomvn)
+install.packages('coda')
 
 # To observarsjoner fra regresjonsmodellen
 x <- rbind(c(0,0),c(1,1))
@@ -125,6 +126,25 @@ metrop_samp <- function(n, m, para_len, init, Data_mat, mcmcsamps, target_dens, 
       }
       paramat[(1 + (i-1)*mcmcsamps):(i*mcmcsamps),] <- cbind(mu, sigma_pcor)
     }, error=function(e){})
+  }
+  return(paramat)
+}
+
+#transforms the partial correlation columns to correlations in a matrix
+pcors_to_corrs<-function(paramat, d){
+  n <- nrow(paramat)
+  for(i in 1:n){
+    theta <- paramat[i,]
+    parcorrs<-theta[((d*2)+1):((d*2) + d*(d-1)/2)]
+    parcorrmat <- diag(-1, nrow=d)
+    parcorrmat[lower.tri(parcorrmat)==TRUE] <- parcorrs
+    parcorrmat <- parcorrmat + t(parcorrmat) - diag(diag(parcorrmat))
+    
+    S <- - parcorrmat
+    S_inv <- solve(S)
+    D_S_inv <- solve(diag(sqrt(diag(S_inv))))
+    corrmat <- (D_S_inv %*% S_inv %*% D_S_inv)
+    paramat[i, ((d*2)+1):((d*2) + d*(d-1)/2)] <- corrmat[lower.tri(corrmat)==TRUE]
   }
   return(paramat)
 }
@@ -313,7 +333,7 @@ seq(from=1/(m+1), to=m/(m+1), by=1/(m+1)) #Expected under t dist
 set.seed(1)
 
 #1: Sample priors
-n <- 100 #samples
+n <- 1000 #samples
 d <- 3 #dimension
 
 muvec<-rep(0,d)
@@ -343,51 +363,42 @@ for(i in 1:n){
 
 init <- c(rep(1,d), rep(0, d*(d-1)/2))
 para_len <- length(init) + d
-mcmcsamps <- 10
+mcmcsamps <- 20
 
 #3.1 Diagnostics (compute ESS, trace plots, etc... for different blocks)
 
 diagnostic_obj_3 <- MCMCmetrop1R(improved_target_dens, theta.init=init, 
                                burnin = 1000, x=Data_mat[7:9,], mcmc=100000)
-plot(diagnostic_obj_3) #trace plots not convincing for correlations with m=d
+
+plot(diagnostic_obj_3) #trace plots not convincing for correlations with m=d, crashes sometimes
 
 diagnostic_obj_4 <- MCMCmetrop1R(improved_target_dens, theta.init=init, 
                                  burnin = 2000, x=Data_mat[1:4,], mcmc=100000)
 
-plot(diagnostic_obj_4) #trace plots very convincing for m >= d + 1
+plot(diagnostic_obj_4) #trace plots convincing for m >= d + 1
 
-diagnostic_obj_50 <- MCMCmetrop1R(improved_target_dens, theta.init=init, burnin = 2000,
-                                  x=rmvnorm(50, mean=muvec, sigma=diag(sigmavec)), mcmc=100000)
+diagnostic_obj_4_4 <- MCMCmetrop1R(improved_target_dens, theta.init=c(rep(1,4), rep(0,6)), 
+                                   burnin = 2000,
+                                   x=rmvnorm(4, mean=rep(0,4), sigma=diag(rep(1,4))), mcmc=100000)
 
-plot(diagnostic_obj_50)
+plot(diagnostic_obj_4_4)
+
+
 
 #3.2 
 
-paramat <- metrop_samp(n, m, para_len, init, Data_mat, mcmcsamps, improved_target_dens)
+paramat_pcor <- metrop_samp(n, m, para_len, init, Data_mat, mcmcsamps, improved_target_dens)
 
 #4: simulate predictive samples given samples from posterior
 
-mu_1<-paramat[,1]
+mu_1<-paramat_pcor[,1]
 n_missing_rows<-sum(ifelse(is.na(mu_1[is.na(mu_1)]), 1, 0))
 n <- n - n_missing_rows/mcmcsamps
-paramat<-paramat[complete.cases(paramat),]
+paramat_pcor<-paramat_pcor[complete.cases(paramat_pcor),]
 
 #4.1 Transforming partial corrs to corrs
 
-for(i in 1:n){
-  theta <- paramat[i,]
-  margvar<-theta[(d+1):(d*2)]
-  parcorrs<-theta[((d*2)+1):((d*2) + d*(d-1)/2)]
-  parcorrmat <- diag(-1, nrow=d)
-  parcorrmat[lower.tri(parcorrmat)==TRUE] <- parcorrs
-  parcorrmat <- parcorrmat + t(parcorrmat) - diag(diag(parcorrmat))
-    
-  S <- - parcorrmat
-  S_inv <- solve(S)
-  D_S_inv <- solve(diag(sqrt(diag(S_inv))))
-  corrmat <- (D_S_inv %*% S_inv %*% D_S_inv)
-  paramat[i, ((d*2)+1):((d*2) + d*(d-1)/2)] <- corrmat[lower.tri(corrmat)==TRUE]
-}
+paramat <- pcors_to_corrs(paramat_pcor, d)
 
 
 npredsamp <- 1
@@ -432,7 +443,7 @@ rowMeans(probmat)
 set.seed(1)
 
 #1.1.1: Sample n priors
-n<-100
+n<-1000
 d<-3 #dimension
 
 muvec<-rep(0,d)
@@ -467,36 +478,22 @@ para_len <- length(init) + d
 mcmcsamps <- 10
 burnin_mcmc <- 2000
 
-paramat <- metrop_samp(n, m, para_len, init, Data_mat, mcmcsamps, 
+paramat_pcor <- metrop_samp(n, m, para_len, init, Data_mat, mcmcsamps, 
                        improved_target_dens, burn=burnin_mcmc, holdout=TRUE)
 
 
-mu_1<-paramat[,1]
+mu_1<-paramat_pcor[,1]
 #removing crashed samples
 cond<-is.na(mu_1[seq(1, n*mcmcsamps, by=mcmcsamps)])
 mth_obs<-mth_obs[!cond,]
 
 n_missing_rows <- sum(ifelse(cond, 1, 0))
 n <- n - n_missing_rows
-paramat <- paramat[complete.cases(paramat),]
+paramat_pcor <- paramat_pcor[complete.cases(paramat_pcor),]
 
 
 # Transforming partial corrs to corrs
-
-for(i in 1:n){
-  theta <- paramat[i,]
-  margvar<-theta[(d+1):(d*2)]
-  parcorrs<-theta[((d*2)+1):((d*2) + d*(d-1)/2)]
-  parcorrmat <- diag(-1, nrow=d)
-  parcorrmat[lower.tri(parcorrmat)==TRUE] <- parcorrs
-  parcorrmat <- parcorrmat + t(parcorrmat) - diag(diag(parcorrmat))
-  
-  S <- - parcorrmat
-  S_inv <- solve(S)
-  D_S_inv <- solve(diag(sqrt(diag(S_inv))))
-  corrmat <- (D_S_inv %*% S_inv %*% D_S_inv)
-  paramat[i, ((d*2)+1):((d*2) + d*(d-1)/2)] <- corrmat[lower.tri(corrmat)==TRUE]
-}
+paramat <- pcors_to_corrs(paramat_pcor, d)
 
 #1.1.4 predictive simulations
 npredsamp <- 1
