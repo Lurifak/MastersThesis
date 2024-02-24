@@ -3,7 +3,7 @@ library(mvtnorm)
 library(corpcor)
 library(clusterGeneration)
 library(monomvn)
-install.packages('coda')
+library(coda)
 
 # To observarsjoner fra regresjonsmodellen
 x <- rbind(c(0,0),c(1,1))
@@ -367,23 +367,33 @@ mcmcsamps <- 20
 
 #3.1 Diagnostics (compute ESS, trace plots, etc... for different blocks)
 
-diagnostic_obj_3 <- MCMCmetrop1R(improved_target_dens, theta.init=init, 
-                               burnin = 1000, x=Data_mat[7:9,], mcmc=100000)
+#trace plots not convincing for correlations with m=d, crashes sometimes
 
-plot(diagnostic_obj_3) #trace plots not convincing for correlations with m=d, crashes sometimes
+diagnostic_obj_3 <- MCMCmetrop1R(improved_target_dens, theta.init=c(rep(1,3), rep(0,3)), 
+                                 burnin = 2000, x=rmvnorm(5, mean=rep(0,3), sigma=diag(rep(1,3))), 
+                                 mcmc=100000)
 
-diagnostic_obj_4 <- MCMCmetrop1R(improved_target_dens, theta.init=init, 
-                                 burnin = 2000, x=Data_mat[1:4,], mcmc=100000)
+effectiveSize(diagnostic_obj_3)
 
-plot(diagnostic_obj_4) #trace plots convincing for m >= d + 1
+plot(diagnostic_obj_3) #trace plots convincing for m >= d + 1
 
-diagnostic_obj_4_4 <- MCMCmetrop1R(improved_target_dens, theta.init=c(rep(1,4), rep(0,6)), 
+diagnostic_obj_4 <- MCMCmetrop1R(improved_target_dens, theta.init=c(rep(1,4), rep(0,6)), 
                                    burnin = 2000,
-                                   x=rmvnorm(4, mean=rep(0,4), sigma=diag(rep(1,4))), mcmc=100000)
+                                   x=rmvnorm(4, mean=rep(0,4), sigma=diag(rep(1,4))), 
+                                   mcmc=100000)
 
-plot(diagnostic_obj_4_4)
+effectiveSize(diagnostic_obj_4)
 
+plot(diagnostic_obj_4)
 
+diagnostic_obj_5 <- MCMCmetrop1R(improved_target_dens, theta.init=c(rep(1,5), rep(0,10)), 
+                                   burnin = 2000,
+                                   x=rmvnorm(6, mean=rep(0,5), sigma=diag(rep(1,5))), x|
+                                   mcmc=100000)
+
+effectiveSize(diagnostic_obj_5)
+
+plot(diagnostic_obj_5)
 
 #3.2 
 
@@ -537,7 +547,7 @@ for(i in 1:n){
     condvar<-as.numeric(Sigma_11 - Sigma_12 %*% Sigma_22_inv %*%  Sigma_21)
     
     # 1 sample of predicted y given x_1, ... on observation not included in model
-    predsim <- rnorm(1, mean = condmean, sd <- condvar) 
+    predsim <- rnorm(1, mean = condmean, sd <- sqrt(condvar)) 
     resid_vec_ourmod[j] <- (mth_obs[i,1] - predsim)^2
   }
 }
