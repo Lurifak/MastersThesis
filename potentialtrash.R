@@ -130,6 +130,17 @@ partialcorr <- replicate(10000,{
 #}
 
 
+#for(i in 1:n){
+#block <- Data_mat[((i-1)*m+1):(i*m),]
+#print(i)
+#Skipping iteration if error - happens rarely (~ 1% chance per iteration)
+#Assuming this should not change the samples drastically
+#tryCatch({
+#paramat[(1 + (i-1)*mcmcsamps):(i*mcmcsamps),] <- MCMCmetrop1R(target_dens, theta.init=init, x=block, mcmc=mcmcsamps)
+#}, error=function(e){})
+#}
+
+
 target_dens<-function(theta, x){
   d <- (1/2) * (sqrt(8 * length(theta) + 9) - 3) #integer solution to equation len(theta) = d/2 * (3+d)
   mu<-theta[1:d]
@@ -158,4 +169,19 @@ target_dens<-function(theta, x){
     
     else{-Inf}
   }
+}
+
+for(i in 1:n){
+  theta <- paramat[i,]
+  margvar<-theta[(d+1):(d*2)]
+  parcorrs<-theta[((d*2)+1):((d*2) + d*(d-1)/2)]
+  parcorrmat <- diag(-1, nrow=d)
+  parcorrmat[lower.tri(parcorrmat)==TRUE] <- parcorrs
+  parcorrmat <- parcorrmat + t(parcorrmat) - diag(diag(parcorrmat))
+  
+  S <- - parcorrmat
+  S_inv <- solve(S)
+  D_S_inv <- solve(diag(sqrt(diag(S_inv))))
+  corrmat <- (D_S_inv %*% S_inv %*% D_S_inv)
+  paramat[i, ((d*2)+1):((d*2) + d*(d-1)/2)] <- corrmat[lower.tri(corrmat)==TRUE]
 }
