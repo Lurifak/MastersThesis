@@ -5,6 +5,7 @@ library(clusterGeneration)
 library(monomvn)
 library(coda)
 
+
 # To observarsjoner fra regresjonsmodellen
 x <- rbind(c(0,0),c(1,1))
 # posterioritetthet, logistic prior på glogit(rho),
@@ -102,10 +103,16 @@ corr_from_pcor<-function(n, d){
   })
 }
 
-metrop_samp <- function(n, m, para_len, init, Data_mat, mcmcsamps, target_dens, burn=500, holdout=FALSE){
+metrop_samp <- function(n, m, para_len, Data_mat, mcmcsamps, target_dens, burn=500, holdout=0){
   paramat <- matrix(NA, nrow=n*mcmcsamps, ncol=para_len)
-  if(holdout==FALSE){t <- m} #use all data to sample from posterior
-  else{t <- m-1} #do not use mth observation
+  if(holdout==0){t <- m} #use all data to sample from posterior (do not withhold observations)
+  else{t <- m - holdout} #do not use number of holdout observations
+  
+  #Determining initialization cheaply
+  covmat <- cov(Data_mat)
+  corrmat <- cov2cor(covmat)
+  init <- c(sqrt(diag(covmat)), corrmat[lower.tri(corrmat)==TRUE])
+  
   for(i in 1:n){
     block <- Data_mat[((i-1)*m+1):(i*t),]
     tryCatch({
@@ -328,12 +335,45 @@ c(a_1, a_2, a_3, a_4, a_5)/tot_comb #amount of x_pred_n+1 above each observed x_
 c(b_1, b_2, b_3, b_4, b_5)/tot_comb #amount of y_pred_n+1 above each observed y_i up to n
 seq(from=1/(m+1), to=m/(m+1), by=1/(m+1)) #Expected under t dist
 
+
+
+# Diagnostics (compute ESS, trace plots, etc... for different blocks)
+
+#trace plots not convincing for correlations with m=d, crashes sometimes
+
+diagnostic_obj_3 <- MCMCmetrop1R(improved_target_dens, theta.init=c(rep(1,3), rep(0,3)), 
+                                 burnin = 2000, x=rmvnorm(3, mean=rep(0,3), sigma=diag(rep(1,3))), 
+                                 mcmc=100000)
+
+effectiveSize(diagnostic_obj_3)
+
+plot(diagnostic_obj_3) #trace plots convincing for m >= d + 1
+
+diagnostic_obj_4 <- MCMCmetrop1R(improved_target_dens, theta.init=c(rep(1,4), rep(0,6)), 
+                                 burnin = 2000,
+                                 x=rmvnorm(4, mean=rep(0,4), sigma=diag(rep(1,4))), 
+                                 mcmc=100000)
+
+effectiveSize(diagnostic_obj_4)
+
+plot(diagnostic_obj_4)
+
+diagnostic_obj_5 <- MCMCmetrop1R(improved_target_dens, theta.init=c(rep(1,5), rep(0,10)), 
+                                 burnin = 2000,
+                                 x=rmvnorm(6, mean=rep(0,5), sigma=diag(rep(1,5))), x|
+                                   mcmc=100000)
+
+effectiveSize(diagnostic_obj_5)
+
+plot(diagnostic_obj_5)
+
+
 #General check of predictive distribution for >= 3 dimensions
 
 set.seed(1)
 
 #1: Sample priors
-n <- 1000 #samples
+n <- 100 #samples
 d <- 3 #dimension
 
 muvec<-rep(0,d)
@@ -363,41 +403,10 @@ for(i in 1:n){
 
 init <- c(rep(1,d), rep(0, d*(d-1)/2))
 para_len <- length(init) + d
-mcmcsamps <- 20
+mcmcsamps <- 10
 
-#3.1 Diagnostics (compute ESS, trace plots, etc... for different blocks)
-
-#trace plots not convincing for correlations with m=d, crashes sometimes
-
-diagnostic_obj_3 <- MCMCmetrop1R(improved_target_dens, theta.init=c(rep(1,3), rep(0,3)), 
-                                 burnin = 2000, x=rmvnorm(5, mean=rep(0,3), sigma=diag(rep(1,3))), 
-                                 mcmc=100000)
-
-effectiveSize(diagnostic_obj_3)
-
-plot(diagnostic_obj_3) #trace plots convincing for m >= d + 1
-
-diagnostic_obj_4 <- MCMCmetrop1R(improved_target_dens, theta.init=c(rep(1,4), rep(0,6)), 
-                                   burnin = 2000,
-                                   x=rmvnorm(4, mean=rep(0,4), sigma=diag(rep(1,4))), 
-                                   mcmc=100000)
-
-effectiveSize(diagnostic_obj_4)
-
-plot(diagnostic_obj_4)
-
-diagnostic_obj_5 <- MCMCmetrop1R(improved_target_dens, theta.init=c(rep(1,5), rep(0,10)), 
-                                   burnin = 2000,
-                                   x=rmvnorm(6, mean=rep(0,5), sigma=diag(rep(1,5))), x|
-                                   mcmc=100000)
-
-effectiveSize(diagnostic_obj_5)
-
-plot(diagnostic_obj_5)
-
-#3.2 
-
-paramat_pcor <- metrop_samp(n, m, para_len, init, Data_mat, mcmcsamps, improved_target_dens)
+paramat_pcor <- metrop_samp(n, m, para_len, Data_mat, mcmcsamps, improved_target_dens, 
+                            burn=2000)
 
 #4: simulate predictive samples given samples from posterior
 
@@ -453,7 +462,7 @@ rowMeans(probmat)
 set.seed(1)
 
 #1.1.1: Sample n priors
-n<-1000
+n<-100
 d<-3 #dimension
 
 muvec<-rep(0,d)
@@ -463,12 +472,13 @@ corrs <- corr_from_pcor(n,d)
 
 #1.1.2 Sample Data given priors
 
-m <- 4 #how many datapoints per iteration.
-#We use m-1 observations to fit the model and then compare
+m <- 6 #how many datapoints per iteration.
+holdout <- 2
+#We use m-holdout observations to fit the model and then compare
 #sample from predicted (from model) with remaining obs
 
 Data_mat<-matrix(0, nrow=(n*m), ncol=d)
-mth_obs<-matrix(NA, nrow = n, ncol=d) #holdout observations
+mth_obs<-matrix(NA, nrow = (n*holdout), ncol=d) #holdout observations
 
 for(i in 1:n){
   corrmat <- diag(1, nrow=d)
@@ -477,7 +487,7 @@ for(i in 1:n){
   Sigma <- diag(sigmavec) %*% corrmat %*% diag(sigmavec)
   
   Data_mat[(((i-1)*m)+1):(i*m),] <- rmvnorm(m, mean=muvec, sigma=Sigma)
-  mth_obs[i,]<-Data_mat[(i*m),]
+  mth_obs[((i-1)*holdout+1):(i*holdout),]<-Data_mat[((i*m) - (holdout-1)):(i*m),]
 }
 
 
@@ -485,17 +495,25 @@ for(i in 1:n){
 
 init <- c(rep(1,d), rep(0, d*(d-1)/2)) #initialization for c(sigma, parcorr) in MCMC
 para_len <- length(init) + d
-mcmcsamps <- 10
+mcmcsamps <- 20
 burnin_mcmc <- 2000
 
-paramat_pcor <- metrop_samp(n, m, para_len, init, Data_mat, mcmcsamps, 
-                       improved_target_dens, burn=burnin_mcmc, holdout=TRUE)
+paramat_pcor <- metrop_samp(n, m, para_len, Data_mat, mcmcsamps, 
+                       improved_target_dens, burn=burnin_mcmc, holdout=holdout)
 
 
 mu_1<-paramat_pcor[,1]
 #removing crashed samples
-cond<-is.na(mu_1[seq(1, n*mcmcsamps, by=mcmcsamps)])
-mth_obs<-mth_obs[!cond,]
+cond <- is.na(mu_1[seq(1, ((n-1)*mcmcsamps+1), by=mcmcsamps)])
+
+removals<-rep(TRUE, holdout*n)
+for(i in 1:n){
+  if(cond[i]==TRUE){
+    removals[(((i-1)*holdout)+1):(i*holdout)] <- rep(FALSE, holdout)
+  }
+}
+
+mth_obs <- mth_obs[removals,]
 
 n_missing_rows <- sum(ifelse(cond, 1, 0))
 n <- n - n_missing_rows
@@ -524,7 +542,7 @@ for(i in 1:(mcmcsamps*n)){
 
 #1.1.5 residuals in 1 dimension
 
-resid_vec_ourmod<-rep(NA, mcmcsamps*n*npredsamp)
+resid_vec_ourmod<-rep(NA, mcmcsamps*n)
 for(i in 1:n){
   for(j in (1 + (1-i)*mcmcsamps):(i*mcmcsamps)){
     print(i)
@@ -566,7 +584,7 @@ mean(paramat[,9])
 #1.1.6 Bayesian lasso
 
 resid_vec_blasso<-rep(NA, n*npredsamp)
-burninit<-10000
+burninit<-5000
 for(i in 1:n){
   y <- Data_mat[(((i-1)*m)+1):(i*m - 1), 1]
   X <- Data_mat[(((i-1)*m)+1):(i*m - 1), 2:d]
