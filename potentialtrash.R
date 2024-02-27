@@ -185,3 +185,49 @@ for(i in 1:n){
   corrmat <- (D_S_inv %*% S_inv %*% D_S_inv)
   paramat[i, ((d*2)+1):((d*2) + d*(d-1)/2)] <- corrmat[lower.tri(corrmat)==TRUE]
 }
+
+resid_vec_ourmod<-rep(NA, mcmcsamps*n*npredsamp)
+for(i in 1:n){
+  for(j in (1 + (1-i)*mcmcsamps):(i*mcmcsamps)){
+    print(i)
+    theta <- paramat[j,] # 1 sample from posterior
+    
+    corrmat <- diag(1, nrow=d)
+    corrmat[lower.tri(corrmat)==TRUE] <- theta[(2*d + 1):para_len]
+    corrmat <- corrmat + t(corrmat) - diag(diag(corrmat))
+    Sigma <- diag(theta[(d+1):(2*d)]) %*% corrmat %*% diag(theta[(d+1):(2*d)])
+    
+    Sigma_11 <- Sigma[1,1]
+    Sigma_12 <- Sigma[1, 2:d]
+    Sigma_21 <- Sigma[2:d, 1]
+    Sigma_22_inv <- solve(Sigma[2:d, 2:d])
+    
+    mu_1 <- theta[1]
+    mu_2 <- theta[2:d]
+    
+    condmean<-as.numeric(mu_1 + Sigma_12 %*% Sigma_22_inv %*% (mth_obs[i,2:d] - mu_2))
+    condvar<-as.numeric(Sigma_11 - Sigma_12 %*% Sigma_22_inv %*%  Sigma_21)
+    
+    # 1 sample of predicted y given x_1, ... on observation not included in model
+    predsim <- rnorm(1, mean = condmean, sd <- sqrt(condvar)) 
+    resid_vec_ourmod[j] <- (mth_obs[i,1] - predsim)^2
+  }
+}
+
+#1.1.4 predictive simulations
+npredsamp <- 1
+predsamps <- matrix(NA, nrow=(mcmcsamps*n*npredsamp), ncol=d)
+
+for(i in 1:(mcmcsamps*n)){
+  print(i)
+  theta <- paramat[i,]
+  
+  corrmat <- diag(1, nrow=d)
+  corrmat[lower.tri(corrmat)==TRUE] <- theta[(2*d + 1):para_len]
+  corrmat <- corrmat + t(corrmat) - diag(diag(corrmat))
+  
+  Sigma <- diag(theta[(d+1):(2*d)]) %*% corrmat %*% diag(theta[(d+1):(2*d)])
+  
+  a <- rmvnorm(1, mean=theta[1:d], sigma=Sigma)
+  predsamps[i,] <- a
+}

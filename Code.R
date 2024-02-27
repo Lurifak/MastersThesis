@@ -110,8 +110,8 @@ metrop_samp <- function(n, m, para_len, Data_mat, mcmcsamps, target_dens, burn=5
   
   #Determining initialization cheaply
   covmat <- cov(Data_mat)
-  corrmat <- cov2cor(covmat)
-  init <- c(sqrt(diag(covmat)), corrmat[lower.tri(corrmat)==TRUE])
+  pcorrmat <- cor2pcor(cov2cor(covmat))
+  init <- c(sqrt(diag(covmat)), pcorrmat[lower.tri(pcorrmat)==TRUE])
   
   for(i in 1:n){
     block <- Data_mat[((i-1)*m+1):(i*t),]
@@ -360,7 +360,7 @@ plot(diagnostic_obj_4)
 
 diagnostic_obj_5 <- MCMCmetrop1R(improved_target_dens, theta.init=c(rep(1,5), rep(0,10)), 
                                  burnin = 2000,
-                                 x=rmvnorm(6, mean=rep(0,5), sigma=diag(rep(1,5))), x|
+                                 x=rmvnorm(6, mean=rep(0,5), sigma=diag(rep(1,5))),
                                    mcmc=100000)
 
 effectiveSize(diagnostic_obj_5)
@@ -373,7 +373,7 @@ plot(diagnostic_obj_5)
 set.seed(1)
 
 #1: Sample priors
-n <- 100 #samples
+n <- 1000 #samples
 d <- 3 #dimension
 
 muvec<-rep(0,d)
@@ -472,8 +472,8 @@ corrs <- corr_from_pcor(n,d)
 
 #1.1.2 Sample Data given priors
 
-m <- 6 #how many datapoints per iteration.
-holdout <- 2
+m <- 7 #how many datapoints per iteration.
+holdout <- 3
 #We use m-holdout observations to fit the model and then compare
 #sample from predicted (from model) with remaining obs
 
@@ -507,6 +507,7 @@ mu_1<-paramat_pcor[,1]
 cond <- is.na(mu_1[seq(1, ((n-1)*mcmcsamps+1), by=mcmcsamps)])
 
 removals<-rep(TRUE, holdout*n)
+
 for(i in 1:n){
   if(cond[i]==TRUE){
     removals[(((i-1)*holdout)+1):(i*holdout)] <- rep(FALSE, holdout)
@@ -523,29 +524,13 @@ paramat_pcor <- paramat_pcor[complete.cases(paramat_pcor),]
 # Transforming partial corrs to corrs
 paramat <- pcors_to_corrs(paramat_pcor, d)
 
-#1.1.4 predictive simulations
-npredsamp <- 1
-predsamps <- matrix(NA, nrow=(mcmcsamps*n*npredsamp), ncol=d)
-
-for(i in 1:(mcmcsamps*n)){
-  theta <- paramat[i,]
-  
-  corrmat <- diag(1, nrow=d)
-  corrmat[lower.tri(corrmat)==TRUE] <- theta[(2*d + 1):para_len]
-  corrmat <- corrmat + t(corrmat) - diag(diag(corrmat))
-  
-  Sigma <- diag(theta[(d+1):(2*d)]) %*% corrmat %*% diag(theta[(d+1):(2*d)])
-  
-  a <- rmvnorm(1, mean=theta[1:d], sigma=Sigma)
-  predsamps[i,] <- a
-}
-
 #1.1.5 residuals in 1 dimension
 
-resid_vec_ourmod<-rep(NA, mcmcsamps*n)
+resid_vec_ourmod<-rep(NA, holdout*mcmcsamps*n)
+
 for(i in 1:n){
-  for(j in (1 + (1-i)*mcmcsamps):(i*mcmcsamps)){
-    print(i)
+  for(j in (1 + (i-1)*mcmcsamps):(i*mcmcsamps)){
+    print(j)
     theta <- paramat[j,] # 1 sample from posterior
     
     corrmat <- diag(1, nrow=d)
@@ -560,17 +545,19 @@ for(i in 1:n){
     
     mu_1 <- theta[1]
     mu_2 <- theta[2:d]
-    
-    condmean<-as.numeric(mu_1 + Sigma_12 %*% Sigma_22_inv %*% (mth_obs[i,2:d] - mu_2))
     condvar<-as.numeric(Sigma_11 - Sigma_12 %*% Sigma_22_inv %*%  Sigma_21)
     
-    # 1 sample of predicted y given x_1, ... on observation not included in model
-    predsim <- rnorm(1, mean = condmean, sd <- sqrt(condvar)) 
-    resid_vec_ourmod[j] <- (mth_obs[i,1] - predsim)^2
+    for(k in 1:holdout){
+      condmean <- as.numeric(mu_1 + Sigma_12 %*% Sigma_22_inv %*% (mth_obs[(k+((i-1)*holdout)),2:d] - mu_2))
+      
+      # 1 sample of predicted y given x_1, ... on observation not included in model
+      predsim <- rnorm(1, mean = condmean, sd <- sqrt(condvar)) 
+      resid_vec_ourmod[k + (holdout*(j-1))] <- (mth_obs[(k+((i-1)*holdout)),1] - predsim)
+    }
   }
 }
 
-mean(resid_vec_ourmod[complete.cases(resid_vec_ourmod)])
+mean(resid_vec_ourmod^2)
 
 #hist
 hist(paramat[,7])
@@ -583,18 +570,42 @@ mean(paramat[,9])
 
 #1.1.6 Bayesian lasso
 
-resid_vec_blasso<-rep(NA, n*npredsamp)
-burninit<-5000
+burninit<-2000
+samps<-20
+thinning <- 10
+resid_vec_blasso<-rep(NA, holdout*n*samps)
+
 for(i in 1:n){
-  y <- Data_mat[(((i-1)*m)+1):(i*m - 1), 1]
-  X <- Data_mat[(((i-1)*m)+1):(i*m - 1), 2:d]
-  mod_obj <- blasso(X, y, T=burninit)
-  betas<-mod_obj$beta[burninit,] 
-  mu_blasso<-mod_obj$mu[burninit]
-  sigmasq_blasso <- mod_obj$s2[burninit]
-  pred <- rnorm(1, mean = mu_blasso + mth_obs[i,2:d] %*% betas, 
-                sd = sqrt(sigmasq_blasso))
-  resid_vec_blasso[i] <- (mth_obs[i,1] - pred)
+  y <- Data_mat[(((i-1)*m)+1):(i*m - holdout), 1]
+  X <- Data_mat[(((i-1)*m)+1):(i*m - holdout), 2:d]
+  mod_obj <- blasso(X, y, thin=thinning, T=(burninit+samps))
+  betas<-mod_obj$beta[(burninit:(burninit + samps)),] 
+  mu_blasso<-mod_obj$mu[(burninit:(burninit + samps))]
+  sigmasq_blasso <- mod_obj$s2[(burninit:(burninit + samps))]
+  for(j in 1:samps){
+    for(k in 1:holdout){
+      pred <- rnorm(1, mean = mu_blasso[j] + mth_obs[(k+((i-1)*holdout)),2:d] %*% betas[j,], 
+                sd = sqrt(sigmasq_blasso[j]))
+      resid_vec_blasso[k + (holdout*((i*j)-1))] <- (mth_obs[(k+((i-1)*holdout)),1] - pred)
+      print(k + (holdout*((i*j)-1)))
+    }
+  }
+}
+
+for(i in 1:n){
+  y <- Data_mat[(((i-1)*m)+1):(i*m - holdout), 1]
+  X <- Data_mat[(((i-1)*m)+1):(i*m - holdout), 2:d]
+  mod_obj <- blasso(X, y, thin=thinning, T=(burninit+samps))
+  betas<-mod_obj$beta[(burninit:(burninit + samps)),] 
+  mu_blasso<-mod_obj$mu[(burninit:(burninit + samps))]
+  sigmasq_blasso <- mod_obj$s2[(burninit:(burninit + samps))]
+  for(j in 1:samps){
+    for(k in 1:holdout){
+      pred <- rnorm(1, mean = mu_blasso[j] + mth_obs[(k+((i-1)*holdout)),2:d] %*% betas[j,], 
+                    sd = sqrt(sigmasq_blasso[j]))
+    }
+  }
+  
 }
 
 mean(resid_vec_blasso^2)
@@ -693,8 +704,8 @@ para_len <- length(init) + d
 mcmcsamps <- 10
 burnin_mcmc <- 2000
 
-paramat <- metrop_samp(n, m, para_len, init, Data_mat, mcmcsamps, 
-                       improved_target_dens, burn=burnin_mcmc, holdout=TRUE)
+paramat <- metrop_samp(n, m, para_len, Data_mat, mcmcsamps, 
+                      burn=burnin_mcmc, holdout=TRUE)
 
 
 mu_1<-paramat[,1]
@@ -743,7 +754,7 @@ for(i in 1:(mcmcsamps*n)){
 
 resid_vec_ourmod<-rep(NA, mcmcsamps*n*npredsamp)
 for(i in 1:n){
-  for(j in (1 + (1-i)*mcmcsamps):(i*mcmcsamps)){
+  for(j in (1 + (i-1)*mcmcsamps):(i*mcmcsamps)){
     print(i)
     theta <- paramat[j,] # 1 sample from posterior
     
