@@ -231,3 +231,20 @@ for(i in 1:(mcmcsamps*n)){
   a <- rmvnorm(1, mean=theta[1:d], sigma=Sigma)
   predsamps[i,] <- a
 }
+
+for(i in 1:n){
+  y <- Data_mat[(((i-1)*m)+1):(i*m - holdout), 1]
+  X <- Data_mat[(((i-1)*m)+1):(i*m - holdout), 2:d]
+  mod_obj <- blasso(X, y, thin=thinning, T=(burninit+samps))
+  betas<-mod_obj$beta[(burninit:(burninit + samps)),] 
+  mu_blasso<-mod_obj$mu[(burninit:(burninit + samps))]
+  sigmasq_blasso <- mod_obj$s2[(burninit:(burninit + samps))]
+  for(j in 1:samps){
+    for(k in 1:holdout){
+      pred <- rnorm(1, mean = mu_blasso[j] + mth_obs[(k+((i-1)*holdout)),2:d] %*% betas[j,], 
+                    sd = sqrt(sigmasq_blasso[j]))
+      resid_vec_blasso[k + (holdout*((i*j)-1))] <- (mth_obs[(k+((i-1)*holdout)),1] - pred)
+      print(k + (holdout*((i*j)-1)))
+    }
+  }
+}

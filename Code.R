@@ -462,7 +462,7 @@ rowMeans(probmat)
 set.seed(1)
 
 #1.1.1: Sample n priors
-n<-100
+n<-1000
 d<-3 #dimension
 
 muvec<-rep(0,d)
@@ -472,10 +472,10 @@ corrs <- corr_from_pcor(n,d)
 
 #1.1.2 Sample Data given priors
 
-m <- 7 #how many datapoints per iteration.
+m <- 10 #how many datapoints per iteration.
 holdout <- 3
 #We use m-holdout observations to fit the model and then compare
-#sample from predicted (from model) with remaining obs
+#sample from predicted (from model) with remaining observations
 
 Data_mat<-matrix(0, nrow=(n*m), ncol=d)
 mth_obs<-matrix(NA, nrow = (n*holdout), ncol=d) #holdout observations
@@ -493,8 +493,7 @@ for(i in 1:n){
 
 #1.1.3 posterior sampling
 
-init <- c(rep(1,d), rep(0, d*(d-1)/2)) #initialization for c(sigma, parcorr) in MCMC
-para_len <- length(init) + d
+para_len <- 2*d + (d*(d-1)/2)
 mcmcsamps <- 20
 burnin_mcmc <- 2000
 
@@ -557,8 +556,6 @@ for(i in 1:n){
   }
 }
 
-mean(resid_vec_ourmod^2)
-
 #hist
 hist(paramat[,7])
 hist(paramat[,8])
@@ -570,9 +567,9 @@ mean(paramat[,9])
 
 #1.1.6 Bayesian lasso
 
-burninit<-2000
+burninit<-3000
 samps<-20
-thinning <- 10
+thinning <- NULL
 resid_vec_blasso<-rep(NA, holdout*n*samps)
 
 for(i in 1:n){
@@ -585,30 +582,18 @@ for(i in 1:n){
   for(j in 1:samps){
     for(k in 1:holdout){
       pred <- rnorm(1, mean = mu_blasso[j] + mth_obs[(k+((i-1)*holdout)),2:d] %*% betas[j,], 
-                sd = sqrt(sigmasq_blasso[j]))
-      resid_vec_blasso[k + (holdout*((i*j)-1))] <- (mth_obs[(k+((i-1)*holdout)),1] - pred)
-      print(k + (holdout*((i*j)-1)))
-    }
-  }
-}
-
-for(i in 1:n){
-  y <- Data_mat[(((i-1)*m)+1):(i*m - holdout), 1]
-  X <- Data_mat[(((i-1)*m)+1):(i*m - holdout), 2:d]
-  mod_obj <- blasso(X, y, thin=thinning, T=(burninit+samps))
-  betas<-mod_obj$beta[(burninit:(burninit + samps)),] 
-  mu_blasso<-mod_obj$mu[(burninit:(burninit + samps))]
-  sigmasq_blasso <- mod_obj$s2[(burninit:(burninit + samps))]
-  for(j in 1:samps){
-    for(k in 1:holdout){
-      pred <- rnorm(1, mean = mu_blasso[j] + mth_obs[(k+((i-1)*holdout)),2:d] %*% betas[j,], 
                     sd = sqrt(sigmasq_blasso[j]))
+      resid_vec_blasso[(i-1)*(samps*holdout) + (j-1)*holdout + k] <- mth_obs[k + (i-1)*holdout,1] - pred
     }
   }
-  
 }
 
+mean(resid_vec_ourmod^2)
 mean(resid_vec_blasso^2)
+
+par(mfrow=c(2,1))
+hist(resid_vec_ourmod, breaks=50)
+hist(resid_vec_blasso, breaks=50)
 
 # Generating data from bayesian lasso and then comparing
 
@@ -616,7 +601,7 @@ mean(resid_vec_blasso^2)
 
 set.seed(2)
 
-n <- 500
+n <- 1000
 d <- 3
 p <- (d-1) #for notational purposes, denote vector (y, x_1 , ..., x_p)
 
@@ -642,6 +627,7 @@ for(i in 1:n){
 
 # Generating X
 m <- 10
+holdout <- 3
 
 muvec<-rep(0,p)
 sigmavec<-rep(1,p)
@@ -649,7 +635,7 @@ sigmavec<-rep(1,p)
 corrs <- corr_from_pcor(n, d)
 
 fulldata <- matrix(NA, nrow=(m*n), ncol = p)
-mth_obs <- matrix(NA, nrow=n, ncol = d)
+mth_obs<-matrix(NA, nrow = (n*holdout), ncol=d) #holdout observations
 
 for(i in 1:n){
   
@@ -665,7 +651,7 @@ for(i in 1:p){
   fulldata[,i] <- (fulldata[,i] - mean(fulldata[,i]))/sd(fulldata[,i])
 }
 
-#Generate y conditional on X, \Beta, \sigma^2 (\mu not includedn not sure how to and if i should)
+#Generate y conditional on X, \Beta, \sigma^2 (\mu not included not sure how to and if i should)
 y <- rep(NA, n*m)
 for(i in 1:(n)){
   y[(1 + (i-1)*m): (i*m)] <- rmvnorm(1, mean=fulldata[(1 + ((i-1)*m)):((i*m)),] %*% beta_samp[i,], sigma_sq[i] * diag(m))
@@ -674,88 +660,74 @@ for(i in 1:(n)){
 Data_mat <- cbind(y,fulldata)
 
 for(i in 1:n){
-  mth_obs[i,] <- Data_mat[(i*m),]
+  #mth_obs[i,] <- Data_mat[(i*m),]
+  mth_obs[((i-1)*holdout+1):(i*holdout),]<-Data_mat[((i*m) - (holdout-1)):(i*m),]
 }
 
 #1.2.2 Bayesian lasso
 
-resid_vec_blasso<-rep(NA, n)
-burnin_blasso<-5000
-for(i in 1:n){
-  y <- Data_mat[(((i-1)*m)+1):(i*m - 1), 1]
-  X <- Data_mat[(((i-1)*m)+1):(i*m - 1), 2:d]
-  mod_obj <- blasso(X, y, T=burnin_blasso)
-  betas<-mod_obj$beta[burnin_blasso,] #accepting only last sample of posterior
-  mu_blasso<-mod_obj$mu[burnin_blasso]
-  sigmasq_blasso <- mod_obj$s2[burnin_blasso]
-  pred <- rnorm(1, mean = mu_blasso + mth_obs[i,2:d] %*% betas, 
-                sd = sqrt(sigmasq_blasso))
-  resid_vec_blasso[i] <- (mth_obs[i,1] - pred)
-}
+burninit<-3000
+samps<-20
+thinning <- NULL
+resid_vec_blasso<-rep(NA, holdout*n*samps)
 
-mean(resid_vec_blasso^2)
+for(i in 1:n){
+  y <- Data_mat[(((i-1)*m)+1):(i*m - holdout), 1]
+  X <- Data_mat[(((i-1)*m)+1):(i*m - holdout), 2:d]
+  mod_obj <- blasso(X, y, thin=thinning, T=(burninit+samps))
+  betas<-mod_obj$beta[(burninit:(burninit + samps)),] 
+  mu_blasso<-mod_obj$mu[(burninit:(burninit + samps))]
+  sigmasq_blasso <- mod_obj$s2[(burninit:(burninit + samps))]
+  for(j in 1:samps){
+    for(k in 1:holdout){
+      pred <- rnorm(1, mean = mu_blasso[j] + mth_obs[(k+((i-1)*holdout)),2:d] %*% betas[j,], 
+                    sd = sqrt(sigmasq_blasso[j]))
+      resid_vec_blasso[(i-1)*(samps*holdout) + (j-1)*holdout + k] <- mth_obs[k + (i-1)*holdout,1] - pred
+    }
+  }
+}
 
 
 
 #1.2.3 Our model
 
-init <- c(rep(1,d), rep(0, d*(d-1)/2))
-para_len <- length(init) + d
-mcmcsamps <- 10
+para_len <- 2*d + (d*(d-1)/2)
+mcmcsamps <- 20
 burnin_mcmc <- 2000
 
-paramat <- metrop_samp(n, m, para_len, Data_mat, mcmcsamps, 
-                      burn=burnin_mcmc, holdout=TRUE)
+paramat_pcor <- metrop_samp(n, m, para_len, Data_mat, mcmcsamps, 
+                            improved_target_dens, burn=burnin_mcmc, holdout=holdout)
 
 
-mu_1<-paramat[,1]
+mu_1<-paramat_pcor[,1]
 #removing crashed samples
-cond<-is.na(mu_1[seq(1, n*mcmcsamps, by=mcmcsamps)])
-mth_obs<-mth_obs[!cond,]
+cond <- is.na(mu_1[seq(1, ((n-1)*mcmcsamps+1), by=mcmcsamps)])
+
+removals<-rep(TRUE, holdout*n)
+
+for(i in 1:n){
+  if(cond[i]==TRUE){
+    removals[(((i-1)*holdout)+1):(i*holdout)] <- rep(FALSE, holdout)
+  }
+}
+
+mth_obs <- mth_obs[removals,]
 
 n_missing_rows <- sum(ifelse(cond, 1, 0))
 n <- n - n_missing_rows
-paramat <- paramat[complete.cases(paramat),]
+paramat_pcor <- paramat_pcor[complete.cases(paramat_pcor),]
+
 
 # Transforming partial corrs to corrs
+paramat <- pcors_to_corrs(paramat_pcor, d)
 
-for(i in 1:n){
-  theta <- paramat[i,]
-  margvar<-theta[(d+1):(d*2)]
-  parcorrs<-theta[((d*2)+1):((d*2) + d*(d-1)/2)]
-  parcorrmat <- diag(-1, nrow=d)
-  parcorrmat[lower.tri(parcorrmat)==TRUE] <- parcorrs
-  parcorrmat <- parcorrmat + t(parcorrmat) - diag(diag(parcorrmat))
-  
-  S <- - parcorrmat
-  S_inv <- solve(S)
-  D_S_inv <- solve(diag(sqrt(diag(S_inv))))
-  corrmat <- (D_S_inv %*% S_inv %*% D_S_inv)
-  paramat[i, ((d*2)+1):((d*2) + d*(d-1)/2)] <- corrmat[lower.tri(corrmat)==TRUE]
-}
-
-
-npredsamp <- 1
-predsamps <- matrix(NA, nrow=(mcmcsamps*n*npredsamp), ncol=d)
-
-for(i in 1:(mcmcsamps*n)){
-  theta <- paramat[i,]
-  
-  corrmat <- diag(1, nrow=d)
-  corrmat[lower.tri(corrmat)==TRUE] <- theta[(2*d + 1):para_len]
-  corrmat <- corrmat + t(corrmat) - diag(diag(corrmat))
-  
-  Sigma <- diag(theta[(d+1):(2*d)]) %*% corrmat %*% diag(theta[(d+1):(2*d)])
-  
-  predsamps[i,] <- rmvnorm(1, mean=theta[1:d], sigma=Sigma)
-}
 
 #1.2.4 residuals in 1 dimension
+resid_vec_ourmod<-rep(NA, holdout*mcmcsamps*n)
 
-resid_vec_ourmod<-rep(NA, mcmcsamps*n*npredsamp)
 for(i in 1:n){
   for(j in (1 + (i-1)*mcmcsamps):(i*mcmcsamps)){
-    print(i)
+    print(j)
     theta <- paramat[j,] # 1 sample from posterior
     
     corrmat <- diag(1, nrow=d)
@@ -770,20 +742,26 @@ for(i in 1:n){
     
     mu_1 <- theta[1]
     mu_2 <- theta[2:d]
-    
-    condmean<-as.numeric(mu_1 + Sigma_12 %*% Sigma_22_inv %*% (mth_obs[i,2:d] - mu_2))
     condvar<-as.numeric(Sigma_11 - Sigma_12 %*% Sigma_22_inv %*%  Sigma_21)
     
-    # 1 sample of predicted y given x_1, ... on observation not included in model
-    predsim <- rnorm(1, mean = condmean, sd <- sqrt(condvar)) 
-    resid_vec_ourmod[j] <- (mth_obs[i,1] - predsim)
+    for(k in 1:holdout){
+      condmean <- as.numeric(mu_1 + Sigma_12 %*% Sigma_22_inv %*% (mth_obs[(k+((i-1)*holdout)),2:d] - mu_2))
+      
+      # 1 sample of predicted y given x_1, ... on observation not included in model
+      predsim <- rnorm(1, mean = condmean, sd <- sqrt(condvar)) 
+      resid_vec_ourmod[k + (holdout*(j-1))] <- (mth_obs[(k+((i-1)*holdout)),1] - predsim)
+    }
   }
 }
 
-resid_vec_ourmod_cleaned <- resid_vec_ourmod[complete.cases(resid_vec_ourmod)]
-mean(resid_vec_ourmod_cleaned^2)
+mean(resid_vec_ourmod^2)
+mean(resid_vec_blasso^2)
 
+par(mfrow=c(2,1))
+hist(resid_vec_ourmod, breaks=50)
+hist(resid_vec_blasso, breaks=50)
 
+#plots
 
 par(mfrow=c(3,3))
 hist(paramat[,1], breaks=100, main="mu_1")
