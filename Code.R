@@ -459,10 +459,12 @@ rowMeans(probmat)
 
 # From our prior
 
+rm(list = setdiff(ls(), lsf.str())) #removes all variables except functions
+
 set.seed(1)
 
 #1.1.1: Sample n priors
-n<-1000
+n<-100
 d<-3 #dimension
 
 muvec<-rep(0,d)
@@ -472,8 +474,8 @@ corrs <- corr_from_pcor(n,d)
 
 #1.1.2 Sample Data given priors
 
-m <- 10 #how many datapoints per iteration.
-holdout <- 3
+m <- 10000 #how many datapoints per iteration.
+holdout <- 15
 #We use m-holdout observations to fit the model and then compare
 #sample from predicted (from model) with remaining observations
 
@@ -487,9 +489,12 @@ for(i in 1:n){
   Sigma <- diag(sigmavec) %*% corrmat %*% diag(sigmavec)
   
   Data_mat[(((i-1)*m)+1):(i*m),] <- rmvnorm(m, mean=muvec, sigma=Sigma)
-  mth_obs[((i-1)*holdout+1):(i*holdout),]<-Data_mat[((i*m) - (holdout-1)):(i*m),]
 }
 
+
+for(i in 1:n){
+  mth_obs[((i-1)*holdout+1):(i*holdout),]<-Data_mat[((i*m) - (holdout-1)):(i*m),]
+}
 
 #1.1.3 posterior sampling
 
@@ -499,7 +504,6 @@ burnin_mcmc <- 2000
 
 paramat_pcor <- metrop_samp(n, m, para_len, Data_mat, mcmcsamps, 
                        improved_target_dens, burn=burnin_mcmc, holdout=holdout)
-
 
 mu_1<-paramat_pcor[,1]
 #removing crashed samples
@@ -556,18 +560,9 @@ for(i in 1:n){
   }
 }
 
-#hist
-hist(paramat[,7])
-hist(paramat[,8])
-hist(paramat[,9])
-
-mean(paramat[,7])
-mean(paramat[,8])
-mean(paramat[,9])
-
 #1.1.6 Bayesian lasso
 
-burninit<-3000
+burninit<-2000
 samps<-20
 thinning <- NULL
 resid_vec_blasso<-rep(NA, holdout*n*samps)
@@ -588,22 +583,26 @@ for(i in 1:n){
   }
 }
 
-mean(resid_vec_ourmod^2)
 mean(resid_vec_blasso^2)
+mean(resid_vec_ourmod^2)
 
 par(mfrow=c(2,1))
-hist(resid_vec_ourmod, breaks=50)
-hist(resid_vec_blasso, breaks=50)
+hist(resid_vec_ourmod, breaks=100)
+hist(resid_vec_blasso, breaks=100)
 
 # Generating data from bayesian lasso and then comparing
 
 #1.2.1 Generating priors
 
+rm(list = setdiff(ls(), lsf.str())) #removes all variables except functions
+
 set.seed(2)
 
-n <- 1000
+n <- 100
 d <- 3
 p <- (d-1) #for notational purposes, denote vector (y, x_1 , ..., x_p)
+m <- 100
+holdout <- 5
 
 r <- 1
 delta <- 1 
@@ -626,21 +625,18 @@ for(i in 1:n){
 }
 
 # Generating X
-m <- 10
-holdout <- 3
 
 muvec<-rep(0,p)
 sigmavec<-rep(1,p)
 
-corrs <- corr_from_pcor(n, d)
+corrs <- corr_from_pcor(n, p)
 
 fulldata <- matrix(NA, nrow=(m*n), ncol = p)
 mth_obs<-matrix(NA, nrow = (n*holdout), ncol=d) #holdout observations
 
 for(i in 1:n){
-  
   corrmat <- diag(1, nrow=p)
-  corrmat[lower.tri(corrmat)==TRUE] <- if(p==2){corrs[i]}else{corrs[i,]}
+  corrmat[lower.tri(corrmat)==TRUE] <- if(p==2){corrs[i]}else{corrs[,i]}
   corrmat <- corrmat + t(corrmat) - diag(diag(corrmat))
   Sigma <- diag(sigmavec) %*% corrmat %*% diag(sigmavec)
   fulldata[(1 + ((i-1)*m)):(i*m),] <- rmvnorm(m, muvec, Sigma)
@@ -651,7 +647,7 @@ for(i in 1:p){
   fulldata[,i] <- (fulldata[,i] - mean(fulldata[,i]))/sd(fulldata[,i])
 }
 
-#Generate y conditional on X, \Beta, \sigma^2 (\mu not included not sure how to and if i should)
+#Generate y conditional on X, \Beta, \sigma^2 (mu not included not sure how to and if i should)
 y <- rep(NA, n*m)
 for(i in 1:(n)){
   y[(1 + (i-1)*m): (i*m)] <- rmvnorm(1, mean=fulldata[(1 + ((i-1)*m)):((i*m)),] %*% beta_samp[i,], sigma_sq[i] * diag(m))
@@ -660,15 +656,14 @@ for(i in 1:(n)){
 Data_mat <- cbind(y,fulldata)
 
 for(i in 1:n){
-  #mth_obs[i,] <- Data_mat[(i*m),]
   mth_obs[((i-1)*holdout+1):(i*holdout),]<-Data_mat[((i*m) - (holdout-1)):(i*m),]
 }
 
 #1.2.2 Bayesian lasso
 
-burninit<-3000
+burninit<-5000
 samps<-20
-thinning <- NULL
+thinning <- 10
 resid_vec_blasso<-rep(NA, holdout*n*samps)
 
 for(i in 1:n){
@@ -758,8 +753,8 @@ mean(resid_vec_ourmod^2)
 mean(resid_vec_blasso^2)
 
 par(mfrow=c(2,1))
-hist(resid_vec_ourmod, breaks=50)
-hist(resid_vec_blasso, breaks=50)
+hist(resid_vec_ourmod, breaks=100)
+hist(resid_vec_blasso, breaks=100)
 
 #plots
 
