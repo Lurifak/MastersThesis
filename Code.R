@@ -474,8 +474,8 @@ corrs <- corr_from_pcor(n,d)
 
 #1.1.2 Sample Data given priors
 
-m <- 10000 #how many datapoints per iteration.
-holdout <- 15
+m <- 15 #how many datapoints per iteration.
+holdout <- 5
 #We use m-holdout observations to fit the model and then compare
 #sample from predicted (from model) with remaining observations
 
@@ -487,8 +487,12 @@ for(i in 1:n){
   corrmat[lower.tri(corrmat)==TRUE] <- corrs[,i]
   corrmat <- corrmat + t(corrmat) - diag(diag(corrmat))
   Sigma <- diag(sigmavec) %*% corrmat %*% diag(sigmavec)
-  
   Data_mat[(((i-1)*m)+1):(i*m),] <- rmvnorm(m, mean=muvec, sigma=Sigma)
+}
+
+#Standardizing (x_1, ..., x_p)
+for(i in 2:d){
+  Data_mat[,i] <- (Data_mat[,i] - mean(Data_mat[,i]))/sd(Data_mat[,i])
 }
 
 
@@ -499,7 +503,7 @@ for(i in 1:n){
 #1.1.3 posterior sampling
 
 para_len <- 2*d + (d*(d-1)/2)
-mcmcsamps <- 20
+mcmcsamps <- 50
 burnin_mcmc <- 2000
 
 paramat_pcor <- metrop_samp(n, m, para_len, Data_mat, mcmcsamps, 
@@ -532,9 +536,9 @@ paramat <- pcors_to_corrs(paramat_pcor, d)
 resid_vec_ourmod<-rep(NA, holdout*mcmcsamps*n)
 
 for(i in 1:n){
-  for(j in (1 + (i-1)*mcmcsamps):(i*mcmcsamps)){
+  for(j in 1:mcmcsamps){
     print(j)
-    theta <- paramat[j,] # 1 sample from posterior
+    theta <- paramat[((i-1)*mcmcsamps + j),] # 1 sample from posterior
     
     corrmat <- diag(1, nrow=d)
     corrmat[lower.tri(corrmat)==TRUE] <- theta[(2*d + 1):para_len]
@@ -555,16 +559,17 @@ for(i in 1:n){
       
       # 1 sample of predicted y given x_1, ... on observation not included in model
       predsim <- rnorm(1, mean = condmean, sd <- sqrt(condvar)) 
-      resid_vec_ourmod[k + (holdout*(j-1))] <- (mth_obs[(k+((i-1)*holdout)),1] - predsim)
+      resid_vec_ourmod[(i-1)*(mcmcsamps*holdout) + (j-1)*holdout + k] <- (mth_obs[(k+((i-1)*holdout)),1] - predsim)
     }
   }
 }
+
 
 #1.1.6 Bayesian lasso
 
 burninit<-2000
 samps<-20
-thinning <- NULL
+thinning <- 10
 resid_vec_blasso<-rep(NA, holdout*n*samps)
 
 for(i in 1:n){
@@ -598,7 +603,7 @@ rm(list = setdiff(ls(), lsf.str())) #removes all variables except functions
 
 set.seed(2)
 
-n <- 100
+n <- 10
 d <- 3
 p <- (d-1) #for notational purposes, denote vector (y, x_1 , ..., x_p)
 m <- 100
@@ -650,6 +655,7 @@ for(i in 1:p){
 #Generate y conditional on X, \Beta, \sigma^2 (mu not included not sure how to and if i should)
 y <- rep(NA, n*m)
 for(i in 1:(n)){
+  print(i)
   y[(1 + (i-1)*m): (i*m)] <- rmvnorm(1, mean=fulldata[(1 + ((i-1)*m)):((i*m)),] %*% beta_samp[i,], sigma_sq[i] * diag(m))
 }
 
@@ -661,7 +667,7 @@ for(i in 1:n){
 
 #1.2.2 Bayesian lasso
 
-burninit<-5000
+burninit<-2000
 samps<-20
 thinning <- 10
 resid_vec_blasso<-rep(NA, holdout*n*samps)
@@ -687,14 +693,14 @@ for(i in 1:n){
 #1.2.3 Our model
 
 para_len <- 2*d + (d*(d-1)/2)
-mcmcsamps <- 20
+mcmcsamps <- 200
 burnin_mcmc <- 2000
 
 paramat_pcor <- metrop_samp(n, m, para_len, Data_mat, mcmcsamps, 
                             improved_target_dens, burn=burnin_mcmc, holdout=holdout)
 
 
-mu_1<-paramat_pcor[,1]
+mu_1 <- paramat_pcor[,1]
 #removing crashed samples
 cond <- is.na(mu_1[seq(1, ((n-1)*mcmcsamps+1), by=mcmcsamps)])
 
@@ -721,9 +727,8 @@ paramat <- pcors_to_corrs(paramat_pcor, d)
 resid_vec_ourmod<-rep(NA, holdout*mcmcsamps*n)
 
 for(i in 1:n){
-  for(j in (1 + (i-1)*mcmcsamps):(i*mcmcsamps)){
-    print(j)
-    theta <- paramat[j,] # 1 sample from posterior
+  for(j in 1:mcmcsamps){
+    theta <- paramat[((i-1)*mcmcsamps + j),] # 1 sample from posterior
     
     corrmat <- diag(1, nrow=d)
     corrmat[lower.tri(corrmat)==TRUE] <- theta[(2*d + 1):para_len]
@@ -744,7 +749,7 @@ for(i in 1:n){
       
       # 1 sample of predicted y given x_1, ... on observation not included in model
       predsim <- rnorm(1, mean = condmean, sd <- sqrt(condvar)) 
-      resid_vec_ourmod[k + (holdout*(j-1))] <- (mth_obs[(k+((i-1)*holdout)),1] - predsim)
+      resid_vec_ourmod[(i-1)*(mcmcsamps*holdout) + (j-1)*holdout + k] <- (mth_obs[(k+((i-1)*holdout)),1] - predsim)
     }
   }
 }
