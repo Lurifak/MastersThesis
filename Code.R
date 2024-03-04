@@ -258,7 +258,7 @@ mean(ifelse(b[,2]>sorted2[3], 1, 0))
 mean(ifelse(b[,2]>sorted2[4], 1, 0))
 
 #Sample rho and other parameters
-n<-10000
+n<-100000
 
 #holder <- rlogis(n,0,1) #prior from berger sun
 #rho <- 2*plogis(holder)-1
@@ -270,15 +270,15 @@ rho<-runif(n, -0.99, 0.99)
 #rho<-seq(from=-0.99, to=0.99, length.out=n)
 hist(rho)
 
-mu_1 <- 15
-mu_2 <- 15
-sigma_1 <- 10
+mu_1 <- 0
+mu_2 <- 0
+sigma_1 <- 1
 sigma_2 <- 1
 
 #Sampling data
 
 meanvec<-c(mu_1, mu_2)
-m<-4
+m<-5
 x_1<-c()
 x_2<-c()
 
@@ -303,7 +303,7 @@ b_3<-0
 b_4<-0
 b_5<-0
 
-parasims<-10
+parasims<-1
 predsims<-1
 it<-floor(n/m)
 
@@ -343,7 +343,9 @@ seq(from=1/(m+1), to=m/(m+1), by=1/(m+1)) #Expected under t dist
 
 diagnostic_obj_3 <- MCMCmetrop1R(improved_target_dens, theta.init=c(rep(1,3), rep(0,3)), 
                                  burnin = 2000, x=rmvnorm(3, mean=rep(0,3), sigma=diag(rep(1,3))), 
-                                 mcmc=100000)
+                                 mcmc=1000)
+
+batchSE(as.mcmc(cbind(diagnostic_obj_3, rep(1, 100000))))
 
 effectiveSize(diagnostic_obj_3)
 
@@ -370,10 +372,12 @@ plot(diagnostic_obj_5)
 
 #General check of predictive distribution for >= 3 dimensions
 
+rm(list = setdiff(ls(), lsf.str()))
+
 set.seed(1)
 
 #1: Sample priors
-n <- 1000 #samples
+n <- 10 #samples
 d <- 3 #dimension
 
 muvec<-rep(0,d)
@@ -385,7 +389,7 @@ corrs <- corr_from_pcor(n,d)
 
 #2 Sample Data given priors
 
-m <- 5 #how many datapoints we use to estimate the posterior sample
+m <- 6 #how many datapoints we use to estimate the posterior sample
 Data_mat<-matrix(0, nrow=(n*m), ncol=d)
 
 
@@ -403,7 +407,7 @@ for(i in 1:n){
 
 init <- c(rep(1,d), rep(0, d*(d-1)/2))
 para_len <- length(init) + d
-mcmcsamps <- 10
+mcmcsamps <- 100
 
 paramat_pcor <- metrop_samp(n, m, para_len, Data_mat, mcmcsamps, improved_target_dens, 
                             burn=2000)
@@ -418,6 +422,11 @@ paramat_pcor<-paramat_pcor[complete.cases(paramat_pcor),]
 #4.1 Transforming partial corrs to corrs
 
 paramat <- pcors_to_corrs(paramat_pcor, d)
+
+est_se <- matrix(NA, nrow=n, ncol=para_len)
+for(i in 1:n){
+  est_se[i,] <- batchSE(as.mcmc(paramat[((i-1)*mcmcsamps+1):(i*mcmcsamps),]), batchSize = 10)
+}
 
 
 npredsamp <- 1
@@ -464,7 +473,7 @@ rm(list = setdiff(ls(), lsf.str())) #removes all variables except functions
 set.seed(1)
 
 #1.1.1: Sample n priors
-n<-100
+n<-10
 d<-3 #dimension
 
 muvec<-rep(0,d)
@@ -533,7 +542,8 @@ paramat <- pcors_to_corrs(paramat_pcor, d)
 
 #1.1.5 residuals in 1 dimension
 
-resid_vec_ourmod<-rep(NA, holdout*mcmcsamps*n)
+infomat <- matrix(NA, nrow = holdout*mcmcsamps*n, ncol=5)
+colnames(infomat) <- c("Predictions", "Actual", "Squared Residual", "Estimated SE", "Corrected MSE")
 
 for(i in 1:n){
   for(j in 1:mcmcsamps){
@@ -558,11 +568,28 @@ for(i in 1:n){
       condmean <- as.numeric(mu_1 + Sigma_12 %*% Sigma_22_inv %*% (mth_obs[(k+((i-1)*holdout)),2:d] - mu_2))
       
       # 1 sample of predicted y given x_1, ... on observation not included in model
-      predsim <- rnorm(1, mean = condmean, sd <- sqrt(condvar)) 
-      resid_vec_ourmod[(i-1)*(mcmcsamps*holdout) + (j-1)*holdout + k] <- (mth_obs[(k+((i-1)*holdout)),1] - predsim)
+      predsim <- rnorm(1, mean = condmean, sd <- sqrt(condvar))
+      
+      infomat[((i-1)*(mcmcsamps*holdout) + (j-1)*holdout + k),1] <- predsim
+      infomat[((i-1)*(mcmcsamps*holdout) + (j-1)*holdout + k),2] <- mth_obs[(k+((i-1)*holdout)),1]
+      infomat[(i-1)*(mcmcsamps*holdout) + (j-1)*holdout + k, 3] <- (mth_obs[(k+((i-1)*holdout)),1] - predsim)^2
     }
   }
 }
+
+placeholder <- matrix(data=NA, nrow=mcmcsamps*holdout, ncol=n)
+
+for(i in 1:n){
+  placeholder[1:(mcmcsamps*holdout), i] <- infomat[((i-1)*(mcmcsamps*holdout)+1):(i*mcmcsamps*holdout),1]
+}
+
+batch_size <- round(sqrt(mcmcsamps*holdout))
+
+for(i in 1:n){
+  infomat[((i-1)*(mcmcsamps*holdout)+1):(i*mcmcsamps*holdout),4] <- rep(batchSE(as.mcmc(placeholder), batchSize = batch_size)[i], (mcmcsamps*holdout))
+}
+
+infomat[,5] <- infomat[,3] - infomat[,4]^2
 
 
 #1.1.6 Bayesian lasso
@@ -589,10 +616,11 @@ for(i in 1:n){
 }
 
 mean(resid_vec_blasso^2)
-mean(resid_vec_ourmod^2)
+mean(infomat[,5])
+mean(infomat[,3])
 
 par(mfrow=c(2,1))
-hist(resid_vec_ourmod, breaks=100)
+hist(infomat[,5], breaks=100)
 hist(resid_vec_blasso, breaks=100)
 
 # Generating data from bayesian lasso and then comparing
@@ -603,11 +631,11 @@ rm(list = setdiff(ls(), lsf.str())) #removes all variables except functions
 
 set.seed(2)
 
-n <- 10
+n <- 1000
 d <- 3
 p <- (d-1) #for notational purposes, denote vector (y, x_1 , ..., x_p)
-m <- 100
-holdout <- 5
+m <- 1000
+holdout <- 50
 
 r <- 1
 delta <- 1 
@@ -669,7 +697,7 @@ for(i in 1:n){
 
 burninit<-2000
 samps<-20
-thinning <- 10
+thinning <- NULL
 resid_vec_blasso<-rep(NA, holdout*n*samps)
 
 for(i in 1:n){
@@ -693,7 +721,7 @@ for(i in 1:n){
 #1.2.3 Our model
 
 para_len <- 2*d + (d*(d-1)/2)
-mcmcsamps <- 200
+mcmcsamps <- 20
 burnin_mcmc <- 2000
 
 paramat_pcor <- metrop_samp(n, m, para_len, Data_mat, mcmcsamps, 
@@ -724,9 +752,11 @@ paramat <- pcors_to_corrs(paramat_pcor, d)
 
 
 #1.2.4 residuals in 1 dimension
-resid_vec_ourmod<-rep(NA, holdout*mcmcsamps*n)
+infomat <- matrix(NA, nrow = holdout*mcmcsamps*n, ncol=5)
+colnames(infomat) <- c("Predictions", "Actual", "Residual", "Estimated SE", "Corrected MSE")
 
 for(i in 1:n){
+  print(i)
   for(j in 1:mcmcsamps){
     theta <- paramat[((i-1)*mcmcsamps + j),] # 1 sample from posterior
     
@@ -748,13 +778,34 @@ for(i in 1:n){
       condmean <- as.numeric(mu_1 + Sigma_12 %*% Sigma_22_inv %*% (mth_obs[(k+((i-1)*holdout)),2:d] - mu_2))
       
       # 1 sample of predicted y given x_1, ... on observation not included in model
-      predsim <- rnorm(1, mean = condmean, sd <- sqrt(condvar)) 
-      resid_vec_ourmod[(i-1)*(mcmcsamps*holdout) + (j-1)*holdout + k] <- (mth_obs[(k+((i-1)*holdout)),1] - predsim)
+      predsim <- rnorm(1, mean = condmean, sd <- sqrt(condvar))
+      
+      infomat[((i-1)*(mcmcsamps*holdout) + (j-1)*holdout + k),1] <- predsim
+      infomat[((i-1)*(mcmcsamps*holdout) + (j-1)*holdout + k),2] <- mth_obs[(k+((i-1)*holdout)),1]
+      infomat[(i-1)*(mcmcsamps*holdout) + (j-1)*holdout + k, 3] <- (mth_obs[(k+((i-1)*holdout)),1] - predsim)
     }
   }
 }
 
-mean(resid_vec_ourmod^2)
+placeholder <- matrix(data=NA, nrow=mcmcsamps*holdout, ncol=n)
+
+for(i in 1:n){
+  placeholder[1:(mcmcsamps*holdout), i] <- infomat[((i-1)*(mcmcsamps*holdout)+1):(i*mcmcsamps*holdout),1]
+}
+
+batch_size <- round(sqrt(mcmcsamps*holdout))
+
+temp <- batchSE(as.mcmc(placeholder), batchSize = batch_size)
+
+for(i in 1:n){
+  print(i)
+  infomat[((i-1)*(mcmcsamps*holdout)+1):(i*mcmcsamps*holdout),4] <- rep(temp[i], (mcmcsamps*holdout))
+}
+
+infomat[,5] <- infomat[,3]^2 - infomat[,4]^2
+
+mean(infomat[,3])
+mean(infomat[,5])
 mean(resid_vec_blasso^2)
 
 par(mfrow=c(2,1))

@@ -248,3 +248,46 @@ for(i in 1:n){
     }
   }
 }
+
+
+
+
+
+
+
+preds <- rep(NA, holdout*mcmcsamps*n)
+resid_vec_ourmod<-rep(NA, holdout*mcmcsamps*n)
+
+infomat <- matrix(NA, nrow = holdout*mcmcsamps*n, ncol=3)
+colnames(infomat) <- c("Predictions", "Squared Residual", "Estimated SE")
+
+for(i in 1:n){
+  for(j in 1:mcmcsamps){
+    print(j)
+    theta <- paramat[((i-1)*mcmcsamps + j),] # 1 sample from posterior
+    
+    corrmat <- diag(1, nrow=d)
+    corrmat[lower.tri(corrmat)==TRUE] <- theta[(2*d + 1):para_len]
+    corrmat <- corrmat + t(corrmat) - diag(diag(corrmat))
+    Sigma <- diag(theta[(d+1):(2*d)]) %*% corrmat %*% diag(theta[(d+1):(2*d)])
+    
+    Sigma_11 <- Sigma[1,1]
+    Sigma_12 <- Sigma[1, 2:d]
+    Sigma_21 <- Sigma[2:d, 1]
+    Sigma_22_inv <- solve(Sigma[2:d, 2:d])
+    
+    mu_1 <- theta[1]
+    mu_2 <- theta[2:d]
+    condvar<-as.numeric(Sigma_11 - Sigma_12 %*% Sigma_22_inv %*%  Sigma_21)
+    
+    for(k in 1:holdout){
+      condmean <- as.numeric(mu_1 + Sigma_12 %*% Sigma_22_inv %*% (mth_obs[(k+((i-1)*holdout)),2:d] - mu_2))
+      
+      # 1 sample of predicted y given x_1, ... on observation not included in model
+      predsim <- rnorm(1, mean = condmean, sd <- sqrt(condvar))
+      
+      infomat[((i-1)*(mcmcsamps*holdout) + (j-1)*holdout + k),1] <- predsim
+      infomat[(i-1)*(mcmcsamps*holdout) + (j-1)*holdout + k, 2] <- (mth_obs[(k+((i-1)*holdout)),1] - predsim)
+    }
+  }
+}
