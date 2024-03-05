@@ -467,7 +467,7 @@ rm(list = setdiff(ls(), lsf.str())) #removes all variables except functions
 set.seed(1)
 
 #1.1.1: Sample n priors
-n<-10
+n<-100
 d<-3 #dimension
 
 muvec<-rep(0,d)
@@ -477,7 +477,7 @@ corrs <- corr_from_pcor(n,d)
 
 #1.1.2 Sample Data given priors
 
-m <- 15 #how many datapoints per iteration.
+m <- 10000 #how many datapoints per iteration.
 holdout <- 5
 #We use m-holdout observations to fit the model and then compare
 #sample from predicted (from model) with remaining observations
@@ -590,7 +590,7 @@ infomat[,5] <- infomat[,3]^2 - infomat[,4]^2
 
 burninit<-2000
 samps<-20
-thinning <- 10
+thinning <- NULL
 infomat_b <- matrix(NA, nrow = holdout*samps*n, ncol=5)
 colnames(infomat) <- c("Predictions", "Actual", "Residual", "Estimated SE", "Corrected MSE")
 
@@ -636,8 +636,8 @@ mean(infomat[,5])
 mean(infomat_b[,5])
 
 par(mfrow=c(2,1))
-hist(infomat[,5], breaks=100)
-hist(infomat_b[,5], breaks=100)
+hist(infomat[,3], breaks=100)
+hist(infomat_b[,3], breaks=100)
 
 # Generating data from bayesian lasso and then comparing
 
@@ -650,7 +650,7 @@ set.seed(2)
 n <- 500
 d <- 3
 p <- (d-1) #for notational purposes, denote vector (y, x_1 , ..., x_p)
-m <- 100
+m <- 500
 holdout <- 50
 
 r <- 1
@@ -758,7 +758,7 @@ infomat_b[,5] <- infomat_b[,3]^2 - infomat_b[,4]^2
 
 para_len <- 2*d + (d*(d-1)/2)
 mcmcsamps <- 20
-burnin_mcmc <- 10000
+burnin_mcmc <- 5000
 
 paramat_pcor <- metrop_samp(n, m, para_len, Data_mat, mcmcsamps, 
                             improved_target_dens, burn=burnin_mcmc, holdout=holdout)
