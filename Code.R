@@ -10,7 +10,7 @@ library(coda)
 x <- rbind(c(0,0),c(1,1))
 # posterioritetthet, logistic prior på glogit(rho),
 # uniform improper på mu1, mu2 og log(sigma_1), log(sigma_2)
-target <- function(theta, x, scale) {
+target <- function(theta, x, scale){
   logPrior <- dlogis(theta[5], scale=scale, log=TRUE)
   mu <- theta[1:2]
   sigma <- exp(theta[3:4])
@@ -423,12 +423,6 @@ paramat_pcor<-paramat_pcor[complete.cases(paramat_pcor),]
 
 paramat <- pcors_to_corrs(paramat_pcor, d)
 
-est_se <- matrix(NA, nrow=n, ncol=para_len)
-for(i in 1:n){
-  est_se[i,] <- batchSE(as.mcmc(paramat[((i-1)*mcmcsamps+1):(i*mcmcsamps),]), batchSize = 10)
-}
-
-
 npredsamp <- 1
 predsamps <- matrix(NA, nrow=(mcmcsamps*n*npredsamp), ncol=d)
 
@@ -542,6 +536,7 @@ paramat <- pcors_to_corrs(paramat_pcor, d)
 
 #1.1.5 residuals in 1 dimension
 
+batch_size <- round(sqrt(mcmcsamps*holdout))
 infomat <- matrix(NA, nrow = holdout*mcmcsamps*n, ncol=5)
 colnames(infomat) <- c("Predictions", "Actual", "Squared Residual", "Estimated SE", "Corrected MSE")
 
@@ -572,7 +567,7 @@ for(i in 1:n){
       
       infomat[((i-1)*(mcmcsamps*holdout) + (j-1)*holdout + k),1] <- predsim
       infomat[((i-1)*(mcmcsamps*holdout) + (j-1)*holdout + k),2] <- mth_obs[(k+((i-1)*holdout)),1]
-      infomat[(i-1)*(mcmcsamps*holdout) + (j-1)*holdout + k, 3] <- (mth_obs[(k+((i-1)*holdout)),1] - predsim)^2
+      infomat[(i-1)*(mcmcsamps*holdout) + (j-1)*holdout + k, 3] <- (mth_obs[(k+((i-1)*holdout)),1] - predsim)
     }
   }
 }
@@ -583,21 +578,22 @@ for(i in 1:n){
   placeholder[1:(mcmcsamps*holdout), i] <- infomat[((i-1)*(mcmcsamps*holdout)+1):(i*mcmcsamps*holdout),1]
 }
 
-batch_size <- round(sqrt(mcmcsamps*holdout))
+temp <- batchSE(as.mcmc(placeholder), batchSize = batch_size)
 
 for(i in 1:n){
-  infomat[((i-1)*(mcmcsamps*holdout)+1):(i*mcmcsamps*holdout),4] <- rep(batchSE(as.mcmc(placeholder), batchSize = batch_size)[i], (mcmcsamps*holdout))
+  infomat[((i-1)*(mcmcsamps*holdout)+1):(i*mcmcsamps*holdout),4] <- rep(temp[i], (mcmcsamps*holdout))
 }
 
-infomat[,5] <- infomat[,3] - infomat[,4]^2
-
+infomat[,5] <- infomat[,3]^2 - infomat[,4]^2
 
 #1.1.6 Bayesian lasso
 
 burninit<-2000
 samps<-20
 thinning <- 10
-resid_vec_blasso<-rep(NA, holdout*n*samps)
+infomat_b <- matrix(NA, nrow = holdout*samps*n, ncol=5)
+colnames(infomat) <- c("Predictions", "Actual", "Residual", "Estimated SE", "Corrected MSE")
+
 
 for(i in 1:n){
   y <- Data_mat[(((i-1)*m)+1):(i*m - holdout), 1]
@@ -610,18 +606,38 @@ for(i in 1:n){
     for(k in 1:holdout){
       pred <- rnorm(1, mean = mu_blasso[j] + mth_obs[(k+((i-1)*holdout)),2:d] %*% betas[j,], 
                     sd = sqrt(sigmasq_blasso[j]))
-      resid_vec_blasso[(i-1)*(samps*holdout) + (j-1)*holdout + k] <- mth_obs[k + (i-1)*holdout,1] - pred
+      actual <- mth_obs[k + (i-1)*holdout,1]
+      
+      infomat_b[((i-1)*(samps*holdout) + (j-1)*holdout + k), 1] <- pred
+      infomat_b[((i-1)*(samps*holdout) + (j-1)*holdout + k), 2] <- mth_obs[(k+((i-1)*holdout)),1]
+      infomat_b[((i-1)*(samps*holdout) + (j-1)*holdout + k), 3] <- pred - actual
     }
   }
 }
 
-mean(resid_vec_blasso^2)
+placeholder <- matrix(data=NA, nrow=samps*holdout, ncol=n)
+
+for(i in 1:n){
+  placeholder[1:(samps*holdout), i] <- infomat_b[((i-1)*(samps*holdout)+1):(i*samps*holdout),1]
+}
+
+temp <- batchSE(as.mcmc(placeholder), batchSize = batch_size)
+
+for(i in 1:n){
+  infomat_b[((i-1)*(samps*holdout)+1):(i*samps*holdout),4] <- rep(temp[i], (samps*holdout))
+}
+
+infomat_b[,5] <- infomat_b[,3]^2 - infomat_b[,4]^2
+
+mean(infomat[,3]^2)
+mean(infomat_b[,3]^2)
+
 mean(infomat[,5])
-mean(infomat[,3])
+mean(infomat_b[,5])
 
 par(mfrow=c(2,1))
 hist(infomat[,5], breaks=100)
-hist(resid_vec_blasso, breaks=100)
+hist(infomat_b[,5], breaks=100)
 
 # Generating data from bayesian lasso and then comparing
 
@@ -631,10 +647,10 @@ rm(list = setdiff(ls(), lsf.str())) #removes all variables except functions
 
 set.seed(2)
 
-n <- 1000
+n <- 500
 d <- 3
 p <- (d-1) #for notational purposes, denote vector (y, x_1 , ..., x_p)
-m <- 1000
+m <- 100
 holdout <- 50
 
 r <- 1
@@ -694,11 +710,13 @@ for(i in 1:n){
 }
 
 #1.2.2 Bayesian lasso
-
-burninit<-2000
 samps<-20
-thinning <- NULL
-resid_vec_blasso<-rep(NA, holdout*n*samps)
+batch_size <- round(sqrt(samps*holdout))
+burninit<-2000
+thinning <- 10
+infomat_b <- matrix(NA, nrow = holdout*samps*n, ncol=5)
+colnames(infomat_b) <- c("Predictions", "Actual", "Residual", "Estimated SE", "Corrected MSE")
+
 
 for(i in 1:n){
   y <- Data_mat[(((i-1)*m)+1):(i*m - holdout), 1]
@@ -711,10 +729,28 @@ for(i in 1:n){
     for(k in 1:holdout){
       pred <- rnorm(1, mean = mu_blasso[j] + mth_obs[(k+((i-1)*holdout)),2:d] %*% betas[j,], 
                     sd = sqrt(sigmasq_blasso[j]))
-      resid_vec_blasso[(i-1)*(samps*holdout) + (j-1)*holdout + k] <- mth_obs[k + (i-1)*holdout,1] - pred
+      actual <- mth_obs[k + (i-1)*holdout,1]
+      
+      infomat_b[((i-1)*(samps*holdout) + (j-1)*holdout + k), 1] <- pred
+      infomat_b[((i-1)*(samps*holdout) + (j-1)*holdout + k), 2] <- mth_obs[(k+((i-1)*holdout)),1]
+      infomat_b[((i-1)*(samps*holdout) + (j-1)*holdout + k), 3] <- pred - actual
     }
   }
 }
+
+placeholder <- matrix(data=NA, nrow=samps*holdout, ncol=n)
+
+for(i in 1:n){
+  placeholder[1:(samps*holdout), i] <- infomat_b[((i-1)*(samps*holdout)+1):(i*samps*holdout),1]
+}
+
+temp <- batchSE(as.mcmc(placeholder), batchSize = batch_size)
+
+for(i in 1:n){
+  infomat_b[((i-1)*(samps*holdout)+1):(i*samps*holdout),4] <- rep(temp[i], (samps*holdout))
+}
+
+infomat_b[,5] <- infomat_b[,3]^2 - infomat_b[,4]^2
 
 
 
@@ -722,7 +758,7 @@ for(i in 1:n){
 
 para_len <- 2*d + (d*(d-1)/2)
 mcmcsamps <- 20
-burnin_mcmc <- 2000
+burnin_mcmc <- 10000
 
 paramat_pcor <- metrop_samp(n, m, para_len, Data_mat, mcmcsamps, 
                             improved_target_dens, burn=burnin_mcmc, holdout=holdout)
@@ -752,6 +788,7 @@ paramat <- pcors_to_corrs(paramat_pcor, d)
 
 
 #1.2.4 residuals in 1 dimension
+batch_size <- round(sqrt(mcmcsamps*holdout))
 infomat <- matrix(NA, nrow = holdout*mcmcsamps*n, ncol=5)
 colnames(infomat) <- c("Predictions", "Actual", "Residual", "Estimated SE", "Corrected MSE")
 
@@ -793,8 +830,6 @@ for(i in 1:n){
   placeholder[1:(mcmcsamps*holdout), i] <- infomat[((i-1)*(mcmcsamps*holdout)+1):(i*mcmcsamps*holdout),1]
 }
 
-batch_size <- round(sqrt(mcmcsamps*holdout))
-
 temp <- batchSE(as.mcmc(placeholder), batchSize = batch_size)
 
 for(i in 1:n){
@@ -804,9 +839,9 @@ for(i in 1:n){
 
 infomat[,5] <- infomat[,3]^2 - infomat[,4]^2
 
-mean(infomat[,3])
+mean(infomat[,3]^2)
 mean(infomat[,5])
-mean(resid_vec_blasso^2)
+mean(infomat_b[,5])
 
 par(mfrow=c(2,1))
 hist(resid_vec_ourmod, breaks=100)
