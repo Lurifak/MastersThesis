@@ -63,10 +63,11 @@ curve(dinvgamma(x, shape=1/2, scale=1/4), add=TRUE)
 
 
 improved_target_dens<-function(theta,x){
+  L <- length(theta)
   Samp_cov <- cov(x)
-  d <- -1/2 + sqrt(1/4 + 2 * length(theta))
+  d <- -1/2 + sqrt(1/4 + 2 * L)
   sigma <- theta[1:d]
-  parcorrs <- theta[(d+1):length(theta)]
+  parcorrs <- theta[(d+1):L]
   if(any(sigma<=0)){-Inf}
   else{
     parcorrmat <- diag(-1, nrow=d)
@@ -84,6 +85,28 @@ improved_target_dens<-function(theta,x){
   }
 }
 
+betafrommvn <- function(PMat, d){ #PMAt = parameter matrix, d = dim of mvn vector
+  #Assumed input: mu_s, sigmas and corrs
+  #d assumed defined as global variable
+  n <- nrow(PMat)
+  len <- ncol(PMat)
+  betas <- matrix(NA, nrow=n, ncol=d)
+  for(i in 1:n){
+    theta <- PMat[i,]
+  
+    corrmat <- diag(1, nrow=d)
+    corrmat[lower.tri(corrmat)==TRUE] <- theta[(2*d + 1):len]
+    corrmat <- corrmat + t(corrmat) - diag(diag(corrmat))
+    Sigma <- diag(theta[(d+1):(2*d)]) %*% corrmat %*% diag(theta[(d+1):(2*d)])
+  
+    Sigma_11 <- Sigma[1,1]
+    Sigma_12 <- Sigma[1, 2:d]
+    Sigma_22_inv <- solve(Sigma[2:d, 2:d])
+    betas[i,2:d] <- Sigma_12 %*% Sigma_22_inv #"slopes"
+    betas[i,1] <- theta[1] - t(betas[i,2:d]) %*% theta[2:d] #intercept
+  }
+  betas
+}
 
 corr_from_pcor<-function(n, d){
   Sigma <- - diag(d)
@@ -377,8 +400,8 @@ rm(list = setdiff(ls(), lsf.str()))
 set.seed(1)
 
 #1: Sample priors
-n <- 10 #samples
-d <- 3 #dimension
+n <- 1000 #samples
+d <- 4 #dimension
 
 muvec<-rep(0,d)
 sigmavec<-rep(1,d)
@@ -467,7 +490,7 @@ rm(list = setdiff(ls(), lsf.str())) #removes all variables except functions
 set.seed(1)
 
 #1.1.1: Sample n priors
-n<-100
+n<-10
 d<-3 #dimension
 
 muvec<-rep(0,d)
@@ -477,8 +500,8 @@ corrs <- corr_from_pcor(n,d)
 
 #1.1.2 Sample Data given priors
 
-m <- 10000 #how many datapoints per iteration.
-holdout <- 5
+m <- 1000 #how many datapoints per iteration.
+holdout <- 20
 #We use m-holdout observations to fit the model and then compare
 #sample from predicted (from model) with remaining observations
 
@@ -507,7 +530,7 @@ for(i in 1:n){
 
 para_len <- 2*d + (d*(d-1)/2)
 mcmcsamps <- 50
-burnin_mcmc <- 2000
+burnin_mcmc <- 5000
 
 paramat_pcor <- metrop_samp(n, m, para_len, Data_mat, mcmcsamps, 
                        improved_target_dens, burn=burnin_mcmc, holdout=holdout)
@@ -534,6 +557,8 @@ paramat_pcor <- paramat_pcor[complete.cases(paramat_pcor),]
 # Transforming partial corrs to corrs
 paramat <- pcors_to_corrs(paramat_pcor, d)
 
+betamat <- betafrommvn(paramat, d)
+
 #1.1.5 residuals in 1 dimension
 
 batch_size <- round(sqrt(mcmcsamps*holdout))
@@ -542,7 +567,6 @@ colnames(infomat) <- c("Predictions", "Actual", "Squared Residual", "Estimated S
 
 for(i in 1:n){
   for(j in 1:mcmcsamps){
-    print(j)
     theta <- paramat[((i-1)*mcmcsamps + j),] # 1 sample from posterior
     
     corrmat <- diag(1, nrow=d)
@@ -588,7 +612,7 @@ infomat[,5] <- infomat[,3]^2 - infomat[,4]^2
 
 #1.1.6 Bayesian lasso
 
-burninit<-2000
+burninit<-4000
 samps<-20
 thinning <- NULL
 infomat_b <- matrix(NA, nrow = holdout*samps*n, ncol=5)
@@ -650,8 +674,8 @@ set.seed(2)
 n <- 500
 d <- 3
 p <- (d-1) #for notational purposes, denote vector (y, x_1 , ..., x_p)
-m <- 500
-holdout <- 50
+m <- 21
+holdout <- 16
 
 r <- 1
 delta <- 1 
@@ -758,7 +782,7 @@ infomat_b[,5] <- infomat_b[,3]^2 - infomat_b[,4]^2
 
 para_len <- 2*d + (d*(d-1)/2)
 mcmcsamps <- 20
-burnin_mcmc <- 5000
+burnin_mcmc <- 3000
 
 paramat_pcor <- metrop_samp(n, m, para_len, Data_mat, mcmcsamps, 
                             improved_target_dens, burn=burnin_mcmc, holdout=holdout)
@@ -839,7 +863,7 @@ for(i in 1:n){
 
 infomat[,5] <- infomat[,3]^2 - infomat[,4]^2
 
-mean(infomat[,3]^2)
+
 mean(infomat[,5])
 mean(infomat_b[,5])
 
@@ -849,6 +873,7 @@ hist(resid_vec_blasso, breaks=100)
 
 #plots
 
+#for d=3
 par(mfrow=c(3,3))
 hist(paramat[,1], breaks=100, main="mu_1")
 hist(paramat[,2], breaks=100, main="mu_2")
@@ -859,6 +884,23 @@ hist(paramat[,6], breaks=100, main="sigma_3")
 hist(paramat[,7], breaks=100, main="rho_12")
 hist(paramat[,8], breaks=100, main="rho_13")
 hist(paramat[,9], breaks=100, main="rho_23")
+
+#for d=4
+par(mfrow=c(4,4))
+hist(paramat[,1], breaks=100, main="mu_1")
+hist(paramat[,2], breaks=100, main="mu_2")
+hist(paramat[,3], breaks=100, main="mu_3")
+hist(paramat[,4], breaks=100, main="mu_4")
+hist(paramat[,5], breaks=100, main="sigma_1")
+hist(paramat[,6], breaks=100, main="sigma_2")
+hist(paramat[,7], breaks=100, main="sigma_3")
+hist(paramat[,8], breaks=100, main="sigma_4")
+hist(paramat[,9], breaks=100, main="rho_12")
+hist(paramat[,10], breaks=100, main="rho_13")
+hist(paramat[,11], breaks=100, main="rho_14")
+hist(paramat[,12], breaks=100, main="rho_23")
+hist(paramat[,13], breaks=100, main="rho_24")
+hist(paramat[,14], breaks=100, main="rho_34")
 
 colMeans(paramat)
 
