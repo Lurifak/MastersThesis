@@ -5,66 +5,10 @@ library(clusterGeneration)
 library(monomvn)
 library(coda)
 
-
-# To observarsjoner fra regresjonsmodellen
-x <- rbind(c(0,0),c(1,1))
-# posterioritetthet, logistic prior på glogit(rho),
-# uniform improper på mu1, mu2 og log(sigma_1), log(sigma_2)
-target <- function(theta, x, scale){
-  logPrior <- dlogis(theta[5], scale=scale, log=TRUE)
-  mu <- theta[1:2]
-  sigma <- exp(theta[3:4])
-  rho <- 2*plogis(theta[5]) - 1
-  Sigma <- diag(sigma) %*% toeplitz(c(1,rho)) %*% diag(sigma)
-  logLik <- dmvnorm(x, mu, Sigma, log=TRUE)
-  sum(logLik) + logPrior
-}
-
-# Generisk Metropolis-Hastings
-s <- .4 # (scale til logistic prior til transformert rho)
-chain <- MCMCmetrop1R(target, theta.init=rep(0,5), x=x, mcmc=1e+6, thin=100, scale=s)
-# summary stats, merk at mange parametere ikke har endelig forventning
-summary(chain)
-# Tilbaketransformasjon av posteriori samples av rho
-rho <- 2*plogis(chain[,5])-1
-hist(rho, breaks=100, prob=TRUE)
-# prior til rho
-curve(2*((1-rho)/(rho+1))^(1/s)/(s*(1+((1-rho)/(rho+1))^(1/s))^2*(1-rho^2)), xname="rho", add=TRUE)
-# posteriorifordeling til abs(rho)
-hist(abs(rho),breaks=100, prob=TRUE)
-# prior til abs(rho)
-curve(4*((1-rho)/(rho+1))^(1/s)/(s*(1+((1-rho)/(rho+1))^(1/s))^2*(1-rho^2)), xname="rho", add=TRUE)
-# trace-plot
-plot(chain)
-predictivesample <- function(theta) {
-  mu <- theta[1:2]
-  sigma <- exp(theta[3:4])
-  rho <- 2*plogis(theta[5]) - 1
-  Sigma <- diag(sigma) %*% toeplitz(c(1,rho)) %*% diag(sigma)
-  c(x=rmvnorm(1, mu, Sigma), beta=c(mu[2] - Sigma[2,1]/Sigma[1,1]*mu[1],Sigma[2,1]/Sigma[1,1]))
-}
-xpredict <- t(apply(chain, 1, predictivesample))
-# Predictiv tetthet til x_3
-plot(xpredict[,1:2], pch=".", xlim=c(-14,15), ylim=c(-14,15))
-# Observasjonene
-points(x[,1],x[,2],col="red",pch=16)
-# Sjekk av konsistens
-mean(xpredict[,1]<0)
-mean(xpredict[,1]<1)
-mean(xpredict[,2]<0)
-mean(xpredict[,2]<1)
-hist.trunc <- function(x, trunc=20, by=1) {
-  hist(x, breaks=seq(0, max(x)+by, by=by), xlim=c(0,trunc), prob=TRUE)
-}
-# posteriori til sigma_1^2
-hist.trunc(exp(chain[,3])^2, 10, .1)
-# lik invers gamma som forventet
-curve(dinvgamma(x, shape=1/2, scale=1/4), add=TRUE)
-
-
 improved_target_dens<-function(theta,x){
   L <- length(theta)
   Samp_cov <- cov(x)
+  n <- nrow(x)
   d <- -1/2 + sqrt(1/4 + 2 * L)
   sigma <- theta[1:d]
   parcorrs <- theta[(d+1):L]
@@ -75,10 +19,11 @@ improved_target_dens<-function(theta,x){
     parcorrmat <- parcorrmat + t(parcorrmat) - diag(diag(parcorrmat))
     
     if ((sum(eigen(parcorrmat)$val<0)==d)){ # if partial corr mat is negative definite
-      S <- - parcorrmat
-      S_inv <- solve(S)
+      #S <- - parcorrmat
+      #S_inv <- solve(S)
       #calculating precision matrix
-      Sigma_inv <- diag(1/sigma) %*% diag(sqrt(diag(S_inv))) %*% S %*% diag(sqrt(diag(S_inv))) %*% diag(1/sigma)
+      #Sigma_inv <- diag(1/sigma) %*% diag(sqrt(diag(S_inv))) %*% S %*% diag(sqrt(diag(S_inv))) %*% diag(1/sigma)
+      Sigma_inv <- solve(diag(sigma) %*% pcor2cor(parcorrmat+diag(2, nrow=d)) %*% diag(sigma))
       -((n-1)/2) * (log(1/det(Sigma_inv)) + sum(diag(Sigma_inv %*% Samp_cov))) - sum(log(sigma))
     }
     else{-Inf}
@@ -98,12 +43,11 @@ betafrommvn <- function(PMat, d){ #PMAt = parameter matrix, d = dim of mvn vecto
     corrmat[lower.tri(corrmat)==TRUE] <- theta[(2*d + 1):len]
     corrmat <- corrmat + t(corrmat) - diag(diag(corrmat))
     Sigma <- diag(theta[(d+1):(2*d)]) %*% corrmat %*% diag(theta[(d+1):(2*d)])
-  
-    Sigma_11 <- Sigma[1,1]
+    
     Sigma_12 <- Sigma[1, 2:d]
     Sigma_22_inv <- solve(Sigma[2:d, 2:d])
     betas[i,2:d] <- Sigma_12 %*% Sigma_22_inv #"slopes"
-    betas[i,1] <- theta[1] - t(betas[i,2:d]) %*% theta[2:d] #intercept
+    betas[i,1] <- theta[1] - betas[i,2:d] %*% theta[2:d] #intercept
   }
   betas
 }
@@ -365,19 +309,19 @@ seq(from=1/(m+1), to=m/(m+1), by=1/(m+1)) #Expected under t dist
 #trace plots not convincing for correlations with m=d, crashes sometimes
 
 diagnostic_obj_3 <- MCMCmetrop1R(improved_target_dens, theta.init=c(rep(1,3), rep(0,3)), 
-                                 burnin = 2000, x=rmvnorm(3, mean=rep(0,3), sigma=diag(rep(1,3))), 
-                                 mcmc=1000)
-
-batchSE(as.mcmc(cbind(diagnostic_obj_3, rep(1, 100000))))
+                                 burnin = 1, x=rmvnorm(6, mean=rep(0,3), sigma=diag(rep(1,3))), 
+                                 mcmc=100000)
 
 effectiveSize(diagnostic_obj_3)
+
+batchSE(as.mcmc(cbind(diagnostic_obj_3, rep(1, 100000))))
 
 plot(diagnostic_obj_3) #trace plots convincing for m >= d + 1
 
 diagnostic_obj_4 <- MCMCmetrop1R(improved_target_dens, theta.init=c(rep(1,4), rep(0,6)), 
-                                 burnin = 2000,
-                                 x=rmvnorm(4, mean=rep(0,4), sigma=diag(rep(1,4))), 
-                                 mcmc=100000)
+                                 burnin = 1000,
+                                 x=rmvnorm(10, mean=rep(0,4), sigma=diag(rep(1,4))), 
+                                 mcmc=10000)
 
 effectiveSize(diagnostic_obj_4)
 
@@ -401,7 +345,7 @@ set.seed(1)
 
 #1: Sample priors
 n <- 1000 #samples
-d <- 4 #dimension
+d <- 3 #dimension
 
 muvec<-rep(0,d)
 sigmavec<-rep(1,d)
@@ -412,7 +356,7 @@ corrs <- corr_from_pcor(n,d)
 
 #2 Sample Data given priors
 
-m <- 6 #how many datapoints we use to estimate the posterior sample
+m <- 5 #how many datapoints we use to estimate the posterior sample
 Data_mat<-matrix(0, nrow=(n*m), ncol=d)
 
 
@@ -430,7 +374,7 @@ for(i in 1:n){
 
 init <- c(rep(1,d), rep(0, d*(d-1)/2))
 para_len <- length(init) + d
-mcmcsamps <- 100
+mcmcsamps <- 1000
 
 paramat_pcor <- metrop_samp(n, m, para_len, Data_mat, mcmcsamps, improved_target_dens, 
                             burn=2000)
@@ -490,7 +434,7 @@ rm(list = setdiff(ls(), lsf.str())) #removes all variables except functions
 set.seed(1)
 
 #1.1.1: Sample n priors
-n<-10
+n<-100
 d<-3 #dimension
 
 muvec<-rep(0,d)
@@ -500,7 +444,7 @@ corrs <- corr_from_pcor(n,d)
 
 #1.1.2 Sample Data given priors
 
-m <- 1000 #how many datapoints per iteration.
+m <- 20000 #how many datapoints per iteration.
 holdout <- 20
 #We use m-holdout observations to fit the model and then compare
 #sample from predicted (from model) with remaining observations
@@ -529,8 +473,8 @@ for(i in 1:n){
 #1.1.3 posterior sampling
 
 para_len <- 2*d + (d*(d-1)/2)
-mcmcsamps <- 50
-burnin_mcmc <- 5000
+mcmcsamps <- 100
+burnin_mcmc <- 2000
 
 paramat_pcor <- metrop_samp(n, m, para_len, Data_mat, mcmcsamps, 
                        improved_target_dens, burn=burnin_mcmc, holdout=holdout)
@@ -612,9 +556,10 @@ infomat[,5] <- infomat[,3]^2 - infomat[,4]^2
 
 #1.1.6 Bayesian lasso
 
-burninit<-4000
+burninit<-2000
 samps<-20
 thinning <- NULL
+betamat_b <- matrix(NA, nrow=n*samps, ncol=d)
 infomat_b <- matrix(NA, nrow = holdout*samps*n, ncol=5)
 colnames(infomat) <- c("Predictions", "Actual", "Residual", "Estimated SE", "Corrected MSE")
 
@@ -623,8 +568,9 @@ for(i in 1:n){
   y <- Data_mat[(((i-1)*m)+1):(i*m - holdout), 1]
   X <- Data_mat[(((i-1)*m)+1):(i*m - holdout), 2:d]
   mod_obj <- blasso(X, y, thin=thinning, T=(burninit+samps))
-  betas<-mod_obj$beta[(burninit:(burninit + samps)),] 
-  mu_blasso<-mod_obj$mu[(burninit:(burninit + samps))]
+  betas<-mod_obj$beta[(burninit:(burninit + samps - 1)),] 
+  mu_blasso<-mod_obj$mu[(burninit:(burninit + samps - 1))]
+  betamat_b[((i-1)*samps+1):(i*samps),] <- cbind(mu_blasso, betas)
   sigmasq_blasso <- mod_obj$s2[(burninit:(burninit + samps))]
   for(j in 1:samps){
     for(k in 1:holdout){
@@ -671,11 +617,11 @@ rm(list = setdiff(ls(), lsf.str())) #removes all variables except functions
 
 set.seed(2)
 
-n <- 500
+n <- 10
 d <- 3
 p <- (d-1) #for notational purposes, denote vector (y, x_1 , ..., x_p)
-m <- 21
-holdout <- 16
+m <- 1000
+holdout <- 10
 
 r <- 1
 delta <- 1 
@@ -781,7 +727,7 @@ infomat_b[,5] <- infomat_b[,3]^2 - infomat_b[,4]^2
 #1.2.3 Our model
 
 para_len <- 2*d + (d*(d-1)/2)
-mcmcsamps <- 20
+mcmcsamps <- 100
 burnin_mcmc <- 3000
 
 paramat_pcor <- metrop_samp(n, m, para_len, Data_mat, mcmcsamps, 
@@ -809,6 +755,8 @@ paramat_pcor <- paramat_pcor[complete.cases(paramat_pcor),]
 
 # Transforming partial corrs to corrs
 paramat <- pcors_to_corrs(paramat_pcor, d)
+
+betamat <- betafrommvn(paramat, d)
 
 
 #1.2.4 residuals in 1 dimension
@@ -873,7 +821,16 @@ hist(resid_vec_blasso, breaks=100)
 
 #plots
 
-#for d=3
+#betamat
+par(mfrow=c(2,3))
+hist(betamat[,1], breaks=50, main="Beta_0")
+hist(betamat[,2], breaks=50, main="Beta_1")
+hist(betamat[,3], breaks=50, main="Beta_2")
+hist(betamat_b[,1], breaks=50, main="Beta_0")
+hist(betamat_b[,2], breaks=50, main="Beta_1")
+hist(betamat_b[,3], breaks=50, main="Beta_2")
+
+
 par(mfrow=c(3,3))
 hist(paramat[,1], breaks=100, main="mu_1")
 hist(paramat[,2], breaks=100, main="mu_2")
@@ -903,4 +860,3 @@ hist(paramat[,13], breaks=100, main="rho_24")
 hist(paramat[,14], breaks=100, main="rho_34")
 
 colMeans(paramat)
-

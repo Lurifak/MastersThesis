@@ -3,6 +3,62 @@
 #banned suckas banned
 
 
+# To observarsjoner fra regresjonsmodellen
+x <- rbind(c(0,0),c(1,1))
+# posterioritetthet, logistic prior på glogit(rho),
+# uniform improper på mu1, mu2 og log(sigma_1), log(sigma_2)
+target <- function(theta, x, scale){
+  logPrior <- dlogis(theta[5], scale=scale, log=TRUE)
+  mu <- theta[1:2]
+  sigma <- exp(theta[3:4])
+  rho <- 2*plogis(theta[5]) - 1
+  Sigma <- diag(sigma) %*% toeplitz(c(1,rho)) %*% diag(sigma)
+  logLik <- dmvnorm(x, mu, Sigma, log=TRUE)
+  sum(logLik) + logPrior
+}
+
+# Generisk Metropolis-Hastings
+s <- .4 # (scale til logistic prior til transformert rho)
+chain <- MCMCmetrop1R(target, theta.init=rep(0,5), x=x, mcmc=1e+6, thin=100, scale=s)
+# summary stats, merk at mange parametere ikke har endelig forventning
+summary(chain)
+# Tilbaketransformasjon av posteriori samples av rho
+rho <- 2*plogis(chain[,5])-1
+hist(rho, breaks=100, prob=TRUE)
+# prior til rho
+curve(2*((1-rho)/(rho+1))^(1/s)/(s*(1+((1-rho)/(rho+1))^(1/s))^2*(1-rho^2)), xname="rho", add=TRUE)
+# posteriorifordeling til abs(rho)
+hist(abs(rho),breaks=100, prob=TRUE)
+# prior til abs(rho)
+curve(4*((1-rho)/(rho+1))^(1/s)/(s*(1+((1-rho)/(rho+1))^(1/s))^2*(1-rho^2)), xname="rho", add=TRUE)
+# trace-plot
+plot(chain)
+predictivesample <- function(theta) {
+  mu <- theta[1:2]
+  sigma <- exp(theta[3:4])
+  rho <- 2*plogis(theta[5]) - 1
+  Sigma <- diag(sigma) %*% toeplitz(c(1,rho)) %*% diag(sigma)
+  c(x=rmvnorm(1, mu, Sigma), beta=c(mu[2] - Sigma[2,1]/Sigma[1,1]*mu[1],Sigma[2,1]/Sigma[1,1]))
+}
+xpredict <- t(apply(chain, 1, predictivesample))
+# Predictiv tetthet til x_3
+plot(xpredict[,1:2], pch=".", xlim=c(-14,15), ylim=c(-14,15))
+# Observasjonene
+points(x[,1],x[,2],col="red",pch=16)
+# Sjekk av konsistens
+mean(xpredict[,1]<0)
+mean(xpredict[,1]<1)
+mean(xpredict[,2]<0)
+mean(xpredict[,2]<1)
+hist.trunc <- function(x, trunc=20, by=1) {
+  hist(x, breaks=seq(0, max(x)+by, by=by), xlim=c(0,trunc), prob=TRUE)
+}
+# posteriori til sigma_1^2
+hist.trunc(exp(chain[,3])^2, 10, .1)
+# lik invers gamma som forventet
+curve(dinvgamma(x, shape=1/2, scale=1/4), add=TRUE)
+
+
 
 #Using H. Joe (2006) notation
 # Incomplete, gives slightly different results than Joe's own library "clusterGeneration" with func rcorrmatrix
@@ -289,5 +345,159 @@ for(i in 1:n){
       infomat[((i-1)*(mcmcsamps*holdout) + (j-1)*holdout + k),1] <- predsim
       infomat[(i-1)*(mcmcsamps*holdout) + (j-1)*holdout + k, 2] <- (mth_obs[(k+((i-1)*holdout)),1] - predsim)
     }
+  }
+}
+
+burninit<-2000
+samps<-20
+thinning <- 10
+infomat_b <- matrix(NA, nrow = holdout*samps*n, ncol=5)
+colnames(infomat) <- c("Predictions", "Actual", "Residual", "Estimated SE", "Corrected MSE")
+
+
+for(i in 1:n){
+  y <- Data_mat[(((i-1)*m)+1):(i*m - holdout), 1]
+  X <- Data_mat[(((i-1)*m)+1):(i*m - holdout), 2:d]
+  mod_obj <- blasso(X, y, thin=thinning, T=(burninit+samps))
+  betas<-mod_obj$beta[(burninit:(burninit + samps)),] 
+  mu_blasso<-mod_obj$mu[(burninit:(burninit + samps))]
+  sigmasq_blasso <- mod_obj$s2[(burninit:(burninit + samps))]
+  for(j in 1:samps){
+    for(k in 1:holdout){
+      pred <- rnorm(1, mean = mu_blasso[j] + mth_obs[(k+((i-1)*holdout)),2:d] %*% betas[j,], 
+                    sd = sqrt(sigmasq_blasso[j]))
+      resid <- mth_obs[k + (i-1)*holdout,1] - pred
+      
+      infomat_b[((i-1)*(samps*holdout) + (j-1)*holdout + k), 1] <- pred
+      infomat_b[((i-1)*(samps*holdout) + (j-1)*holdout + k), 2] <- mth_obs[(k+((i-1)*holdout)),1]
+      infomat_b[((i-1)*(samps*holdout) + (j-1)*holdout + k), 2] <- pred - resid
+    }
+  }
+}
+
+placeholder <- matrix(data=NA, nrow=mcmcsamps*holdout, ncol=n)
+
+for(i in 1:n){
+  placeholder[1:(mcmcsamps*holdout), i] <- infomat_b[((i-1)*(samps*holdout)+1):(i*samps*holdout),1]
+}
+
+temp <- batchSE(as.mcmc(placeholder), batchSize = batch_size)
+
+for(i in 1:n){
+  infomat_b[((i-1)*(mcmcsamps*holdout)+1):(i*mcmcsamps*holdout),4] <- rep(temp[i], (samps*holdout))
+}
+
+infomat_b[,5] <- infomat_b[,3]^2 - infomat_b[,4]^2
+
+#Test 1
+
+set.seed(2)
+n <- 2
+d <- 3
+
+muvec<-rep(0,d)
+sigmavec<-rep(1,d)
+
+corrs <- corr_from_pcor(n,d)
+
+m <- 100000 #how many datapoints per iteration.
+holdout <- 20
+#We use m-holdout observations to fit the model and then compare
+#sample from predicted (from model) with remaining observations
+
+Data_mat<-matrix(0, nrow=(n*m), ncol=d)
+mth_obs<-matrix(NA, nrow = (n*holdout), ncol=d) #holdout observations
+
+for(i in 1:n){
+  corrmat <- diag(1, nrow=d)
+  corrmat[lower.tri(corrmat)==TRUE] <- corrs[,i]
+  corrmat <- corrmat + t(corrmat) - diag(diag(corrmat))
+  Sigma <- diag(sigmavec) %*% corrmat %*% diag(sigmavec)
+  Data_mat[(((i-1)*m)+1):(i*m),] <- rmvnorm(m, mean=muvec, sigma=Sigma)
+}
+
+#Standardizing (x_1, ..., x_p)
+for(i in 2:d){
+  Data_mat[,i] <- (Data_mat[,i] - mean(Data_mat[,i]))/sd(Data_mat[,i])
+}
+
+#1.1.3 posterior sampling
+
+para_len <- 2*d + (d*(d-1)/2)
+mcmcsamps <- 1000
+burnin_mcmc <- 5000
+
+paramat_pcor <- metrop_samp(n,m,para_len, Data_mat, mcmcsamps,improved_target_dens, burn=burnin_mcmc,holdout=0)
+
+# Transforming partial corrs to corrs
+paramat <- pcors_to_corrs(paramat_pcor, d)
+
+betamat <- betafrommvn(paramat, d)
+
+#blasso
+burninit<-5000
+samps<-1000
+thinning <- NULL
+betamat_b <- matrix(NA, nrow=(n-1)*samps, ncol=d)
+infomat_b <- matrix(NA, nrow = holdout*samps*n, ncol=5)
+colnames(infomat) <- c("Predictions", "Actual", "Residual", "Estimated SE", "Corrected MSE")
+
+
+for(i in 1:(n-1)){
+  y <- Data_mat[(((i-1)*m)+1):(i*m - holdout), 1]
+  X <- Data_mat[(((i-1)*m)+1):(i*m - holdout), 2:d]
+  mod_obj <- blasso(X, y, thin=thinning, T=(burninit+samps))
+  betas<-mod_obj$beta[(burninit:(burninit + samps - 1)),] 
+  mu_blasso<-mod_obj$mu[(burninit:(burninit + samps - 1))]
+  betamat_b[((i-1)*samps+1):(i*samps),] <- cbind(mu_blasso, betas)
+  sigmasq_blasso <- mod_obj$s2[(burninit:(burninit + samps))]
+  for(j in 1:samps){
+    for(k in 1:holdout){
+      pred <- rnorm(1, mean = mu_blasso[j] + mth_obs[(k+((i-1)*holdout)),2:d] %*% betas[j,], 
+                    sd = sqrt(sigmasq_blasso[j]))
+      actual <- mth_obs[k + (i-1)*holdout,1]
+      
+      infomat_b[((i-1)*(samps*holdout) + (j-1)*holdout + k), 1] <- pred
+      infomat_b[((i-1)*(samps*holdout) + (j-1)*holdout + k), 2] <- mth_obs[(k+((i-1)*holdout)),1]
+      infomat_b[((i-1)*(samps*holdout) + (j-1)*holdout + k), 3] <- pred - actual
+    }
+  }
+}
+
+colnames(Data_mat) <- c("y", "x_1", "x_2")
+
+#betamat
+par(mfrow=c(2,3))
+hist(betamat[,1], breaks=50, main="Beta_0")
+hist(betamat[,2], breaks=50, main="Beta_1")
+hist(betamat[,3], breaks=50, main="Beta_2")
+hist(betamat_b[,1], breaks=50, main="Beta_0")
+hist(betamat_b[,2], breaks=50, main="Beta_1")
+hist(betamat_b[,3], breaks=50, main="Beta_2")
+colMeans(betamat)
+colMeans(betamat_b)
+lm(y ~ x_1 + x_2, as.data.frame(Data_mat[1:100000,]))$coefficients
+
+
+improved_target_dens<-function(theta,x){
+  L <- length(theta)
+  Samp_cov <- cov(x)
+  d <- -1/2 + sqrt(1/4 + 2 * L)
+  sigma <- theta[1:d]
+  parcorrs <- theta[(d+1):L]
+  if(any(sigma<=0)){-Inf}
+  else{
+    parcorrmat <- diag(-1, nrow=d)
+    parcorrmat[lower.tri(parcorrmat)==TRUE] <- parcorrs
+    parcorrmat <- parcorrmat + t(parcorrmat) - diag(diag(parcorrmat))
+    
+    if ((sum(eigen(parcorrmat)$val<0)==d)){ # if partial corr mat is negative definite
+      S <- - parcorrmat
+      S_inv <- solve(S)
+      #calculating precision matrix
+      Sigma_inv <- diag(1/sigma) %*% diag(sqrt(diag(S_inv))) %*% S %*% diag(sqrt(diag(S_inv))) %*% diag(1/sigma)
+      -((n-1)/2) * (log(1/det(Sigma_inv)) + sum(diag(Sigma_inv %*% Samp_cov))) - sum(log(sigma))
+    }
+    else{-Inf}
   }
 }
