@@ -65,7 +65,7 @@ corr_from_pcor<-function(n, d){
     # Lemma 2 from Artner 2022 space of partial correlation matrices to convert to correlation matrix
     S <- - Sigma
     S_inv <- solve(S)
-    D_S_inv <- solve(diag(sqrt(diag(S_inv))))
+    D_S_inv <- diag(1/sqrt(diag(S_inv)))
     (D_S_inv %*% S_inv %*% D_S_inv)[lower.tri(S_inv)==TRUE]
   })
 }
@@ -75,13 +75,14 @@ metrop_samp <- function(n, m, para_len, Data_mat, mcmcsamps, target_dens, burn=5
   if(holdout==0){t <- m} #use all data to sample from posterior (do not withhold observations)
   else{t <- m - holdout} #do not use number of holdout observations
   
-  #Determining initialization cheaply
-  covmat <- cov(Data_mat)
-  pcorrmat <- cor2pcor(cov2cor(covmat))
-  init <- c(sqrt(diag(covmat)), pcorrmat[lower.tri(pcorrmat)==TRUE])
-  
   for(i in 1:n){
     block <- Data_mat[((i-1)*m+1):(i*t),]
+    
+    #Determining initialization cheaply
+    covmat <- cov(block)
+    pcorrmat <- cor2pcor(cov2cor(covmat))
+    init <- c(sqrt(diag(covmat)), pcorrmat[lower.tri(pcorrmat)==TRUE])
+    
     tryCatch({
       sigma_pcor <- MCMCmetrop1R(improved_target_dens, theta.init=init, burnin = burn, x=block, mcmc=mcmcsamps)
       mu <- matrix(NA, nrow=mcmcsamps, ncol=d)
@@ -308,18 +309,24 @@ seq(from=1/(m+1), to=m/(m+1), by=1/(m+1)) #Expected under t dist
 
 #trace plots not convincing for correlations with m=d, crashes sometimes
 
-diagnostic_obj_3 <- MCMCmetrop1R(improved_target_dens, theta.init=c(rep(1,3), rep(0,3)), 
-                                 burnin = 1, x=rmvnorm(6, mean=rep(0,3), sigma=diag(rep(1,3))), 
-                                 mcmc=100000)
+data_3 <- rmvnorm(4, mean=rep(0,3), sigma=diag(rep(1,3)))
+
+covmat <- cov(data_3)
+pcorrmat <- cor2pcor(cov2cor(covmat))
+init_3 <- c(sqrt(diag(covmat)), pcorrmat[lower.tri(pcorrmat)==TRUE])
+
+diagnostic_obj_3 <- MCMCmetrop1R(improved_target_dens, theta.init=init_3, 
+                                 burnin = 1, x=data_3, 
+                                 mcmc=2000)
 
 effectiveSize(diagnostic_obj_3)
 
-batchSE(as.mcmc(cbind(diagnostic_obj_3, rep(1, 100000))))
-
 plot(diagnostic_obj_3) #trace plots convincing for m >= d + 1
 
+batchSE(as.mcmc(cbind(diagnostic_obj_3, rep(1, 100000))))
+
 diagnostic_obj_4 <- MCMCmetrop1R(improved_target_dens, theta.init=c(rep(1,4), rep(0,6)), 
-                                 burnin = 1000,
+                                 burnin = 1,
                                  x=rmvnorm(10, mean=rep(0,4), sigma=diag(rep(1,4))), 
                                  mcmc=10000)
 
@@ -328,7 +335,7 @@ effectiveSize(diagnostic_obj_4)
 plot(diagnostic_obj_4)
 
 diagnostic_obj_5 <- MCMCmetrop1R(improved_target_dens, theta.init=c(rep(1,5), rep(0,10)), 
-                                 burnin = 2000,
+                                 burnin = 1,
                                  x=rmvnorm(6, mean=rep(0,5), sigma=diag(rep(1,5))),
                                    mcmc=100000)
 
@@ -374,10 +381,10 @@ for(i in 1:n){
 
 init <- c(rep(1,d), rep(0, d*(d-1)/2))
 para_len <- length(init) + d
-mcmcsamps <- 1000
+mcmcsamps <- 3000
 
 paramat_pcor <- metrop_samp(n, m, para_len, Data_mat, mcmcsamps, improved_target_dens, 
-                            burn=2000)
+                            burn=500)
 
 #4: simulate predictive samples given samples from posterior
 
@@ -434,7 +441,7 @@ rm(list = setdiff(ls(), lsf.str())) #removes all variables except functions
 set.seed(1)
 
 #1.1.1: Sample n priors
-n<-100
+n<-1000
 d<-3 #dimension
 
 muvec<-rep(0,d)
@@ -444,7 +451,7 @@ corrs <- corr_from_pcor(n,d)
 
 #1.1.2 Sample Data given priors
 
-m <- 20000 #how many datapoints per iteration.
+m <- 24 #how many datapoints per iteration.
 holdout <- 20
 #We use m-holdout observations to fit the model and then compare
 #sample from predicted (from model) with remaining observations
@@ -473,8 +480,8 @@ for(i in 1:n){
 #1.1.3 posterior sampling
 
 para_len <- 2*d + (d*(d-1)/2)
-mcmcsamps <- 100
-burnin_mcmc <- 2000
+mcmcsamps <- 3000
+burnin_mcmc <- 500
 
 paramat_pcor <- metrop_samp(n, m, para_len, Data_mat, mcmcsamps, 
                        improved_target_dens, burn=burnin_mcmc, holdout=holdout)
@@ -507,10 +514,11 @@ betamat <- betafrommvn(paramat, d)
 
 batch_size <- round(sqrt(mcmcsamps*holdout))
 infomat <- matrix(NA, nrow = holdout*mcmcsamps*n, ncol=5)
-colnames(infomat) <- c("Predictions", "Actual", "Squared Residual", "Estimated SE", "Corrected MSE")
+colnames(infomat) <- c("Predictions", "Actual", "Residual", "Estimated SE", "Corrected MSE")
 
 for(i in 1:n){
   for(j in 1:mcmcsamps){
+    print(i)
     theta <- paramat[((i-1)*mcmcsamps + j),] # 1 sample from posterior
     
     corrmat <- diag(1, nrow=d)
@@ -558,10 +566,11 @@ infomat[,5] <- infomat[,3]^2 - infomat[,4]^2
 
 burninit<-2000
 samps<-20
+batch_size <- round(sqrt(samps*holdout))
 thinning <- NULL
 betamat_b <- matrix(NA, nrow=n*samps, ncol=d)
 infomat_b <- matrix(NA, nrow = holdout*samps*n, ncol=5)
-colnames(infomat) <- c("Predictions", "Actual", "Residual", "Estimated SE", "Corrected MSE")
+colnames(infomat_b) <- c("Predictions", "Actual", "Residual", "Estimated SE", "Corrected MSE")
 
 
 for(i in 1:n){
@@ -821,7 +830,7 @@ hist(resid_vec_blasso, breaks=100)
 
 #plots
 
-#betamat
+#betamat d=3
 par(mfrow=c(2,3))
 hist(betamat[,1], breaks=50, main="Beta_0")
 hist(betamat[,2], breaks=50, main="Beta_1")
@@ -829,6 +838,32 @@ hist(betamat[,3], breaks=50, main="Beta_2")
 hist(betamat_b[,1], breaks=50, main="Beta_0")
 hist(betamat_b[,2], breaks=50, main="Beta_1")
 hist(betamat_b[,3], breaks=50, main="Beta_2")
+
+#betamat d=4
+par(mfrow=c(3,3))
+hist(betamat[,1], breaks=50, main="Beta_0")
+hist(betamat[,2], breaks=50, main="Beta_1")
+hist(betamat[,3], breaks=50, main="Beta_2")
+hist(betamat[,4], breaks=50, main="Beta_3")
+
+hist(betamat_b[,1], breaks=50, main="Beta_0")
+hist(betamat_b[,2], breaks=50, main="Beta_1")
+hist(betamat_b[,3], breaks=50, main="Beta_2")
+hist(betamat_b[,4], breaks=50, main="Beta_3")
+
+#betamat d=5
+par(mfrow=c(3,4))
+hist(betamat[,1], breaks=50, main="Beta_0")
+hist(betamat[,2], breaks=50, main="Beta_1")
+hist(betamat[,3], breaks=50, main="Beta_2")
+hist(betamat[,4], breaks=50, main="Beta_3")
+hist(betamat[,5], breaks=50, main="Beta_3")
+
+hist(betamat_b[,1], breaks=50, main="Beta_0")
+hist(betamat_b[,2], breaks=50, main="Beta_1")
+hist(betamat_b[,3], breaks=50, main="Beta_2")
+hist(betamat_b[,4], breaks=50, main="Beta_3")
+hist(betamat_b[,5], breaks=50, main="Beta_3")
 
 
 par(mfrow=c(3,3))
