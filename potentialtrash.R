@@ -501,3 +501,85 @@ improved_target_dens<-function(theta,x){
     else{-Inf}
   }
 }
+
+improved_target_dens<-function(theta,x){
+  L <- length(theta)
+  Samp_cov <- cov(x)
+  n <- nrow(x)
+  d <- ncol(x)
+  sigma <- theta[1:d]
+  parcorrs <- theta[(d+1):L]
+  if(any(sigma<=0)){-Inf}
+  else{
+    parcorrmat <- diag(-1, nrow=d)
+    parcorrmat[lower.tri(parcorrmat)==TRUE] <- parcorrs
+    parcorrmat <- parcorrmat + t(parcorrmat) - diag(diag(parcorrmat))
+    
+    if ((sum(eigen(parcorrmat)$val<0)==d)){ # if partial corr mat is negative definite
+      #S <- - parcorrmat
+      #S_inv <- solve(S)
+      #calculating precision matrix
+      #Sigma_inv <- diag(1/sigma) %*% diag(sqrt(diag(S_inv))) %*% S %*% diag(sqrt(diag(S_inv))) %*% diag(1/sigma)
+      Sigma_inv <- solve(diag(sigma) %*% pcor2cor(parcorrmat+diag(2, nrow=d)) %*% diag(sigma))
+      -((n-1)/2) * (log(1/det(Sigma_inv)) + sum(diag(Sigma_inv %*% Samp_cov))) - sum(log(sigma))
+    }
+    else{-Inf}
+  }
+}
+
+for(i in 1:n){
+  print(i)
+  Sigma <- matrix(data=c(sigma_1^2,sigma_1*sigma_2*rho[i],sigma_1*sigma_2*rho[i],sigma_2^2), nrow=2)
+  a <- rmvnorm(m, mean=meanvec, sigma=Sigma)
+  y <- append(a[,1], x_1)
+  x <- append(a[,2], x_2)
+}
+
+z <- cbind(y, x)
+
+k <- 2
+holdouts <- matrix(NA, nrow=n*k, ncol=2)
+holdouts[1:(n*k),2] <- rnorm(n*k, mean=mu_2, sd=sigma_2)
+
+a_1<-0
+a_2<-0
+a_3<-0
+a_4<-0
+a_5<-0
+b_1<-0
+b_2<-0
+b_3<-0
+b_4<-0
+b_5<-0
+
+parasims<-1
+predsims<-1
+it<-floor(n/m)
+
+for (i in 1:(it)){
+  newdata<-x[((i-1)*m+1):(i*m),] #Block of m of the data for each iteration
+  wadup<-alg(newdata,parasims) #simulating parameters for this block
+  sims<-apply(as.matrix(wadup), 1, FUN=predsamp) #simulating predictive samples for simulated parameters
+  
+  sorted_1<-sort(newdata[,1], decreasing=TRUE)
+  sorted_2<-sort(newdata[,2], decreasing=TRUE)
+  
+  a_1 <- a_1 + sum(ifelse(sims[1:predsims,]>sorted_1[1], 1, 0))
+  a_2 <- a_2 + sum(ifelse(sims[1:predsims,]>sorted_1[2], 1, 0))
+  a_3 <- a_3 + sum(ifelse(sims[1:predsims,]>sorted_1[3], 1, 0))
+  a_4 <- a_4 + sum(ifelse(sims[1:predsims,]>sorted_1[4], 1, 0))
+  a_5 <- a_5 + sum(ifelse(sims[1:predsims,]>sorted_1[5], 1, 0))
+  
+  b_1 <- b_1 + sum(ifelse(sims[(predsims+1):(predsims*2),]>sorted_2[1], 1, 0))
+  b_2 <- b_2 + sum(ifelse(sims[(predsims+1):(predsims*2),]>sorted_2[2], 1, 0))
+  b_3 <- b_3 + sum(ifelse(sims[(predsims+1):(predsims*2),]>sorted_2[3], 1, 0))
+  b_4 <- b_4 + sum(ifelse(sims[(predsims+1):(predsims*2),]>sorted_2[4], 1, 0))
+  b_5 <- b_5 + sum(ifelse(sims[(predsims+1):(predsims*2),]>sorted_2[5], 1, 0))
+  
+  print(i)
+}
+
+tot_comb<-it*parasims*predsims
+c(a_1, a_2, a_3, a_4, a_5)/tot_comb #amount of x_pred_n+1 above each observed x_i up to n
+c(b_1, b_2, b_3, b_4, b_5)/tot_comb #amount of y_pred_n+1 above each observed y_i up to n
+seq(from=1/(m+1), to=m/(m+1), by=1/(m+1)) #Expected under t dist

@@ -9,7 +9,7 @@ improved_target_dens<-function(theta,x){
   L <- length(theta)
   Samp_cov <- cov(x)
   n <- nrow(x)
-  d <- -1/2 + sqrt(1/4 + 2 * L)
+  d <- ncol(x)
   sigma <- theta[1:d]
   parcorrs <- theta[(d+1):L]
   if(any(sigma<=0)){-Inf}
@@ -18,11 +18,8 @@ improved_target_dens<-function(theta,x){
     parcorrmat[lower.tri(parcorrmat)==TRUE] <- parcorrs
     parcorrmat <- parcorrmat + t(parcorrmat) - diag(diag(parcorrmat))
     
-    if ((sum(eigen(parcorrmat)$val<0)==d)){ # if partial corr mat is negative definite
-      #S <- - parcorrmat
-      #S_inv <- solve(S)
-      #calculating precision matrix
-      #Sigma_inv <- diag(1/sigma) %*% diag(sqrt(diag(S_inv))) %*% S %*% diag(sqrt(diag(S_inv))) %*% diag(1/sigma)
+    if ((sum(eigen(parcorrmat)$val<0)==d)){ # if partial corr mat is negative definite <=> corrmat positive def
+      
       Sigma_inv <- solve(diag(sigma) %*% pcor2cor(parcorrmat+diag(2, nrow=d)) %*% diag(sigma))
       -((n-1)/2) * (log(1/det(Sigma_inv)) + sum(diag(Sigma_inv %*% Samp_cov))) - sum(log(sigma))
     }
@@ -65,7 +62,7 @@ corr_from_pcor<-function(n, d){
     # Lemma 2 from Artner 2022 space of partial correlation matrices to convert to correlation matrix
     S <- - Sigma
     S_inv <- solve(S)
-    D_S_inv <- diag(1/sqrt(diag(S_inv)))
+    D_S_inv <- diag(1/sqrt(diag(S_inv))) # D^-1 = diag (1 / diag(D)) when D diagonal matrix
     (D_S_inv %*% S_inv %*% D_S_inv)[lower.tri(S_inv)==TRUE]
   })
 }
@@ -165,12 +162,29 @@ alg<-function(datamat, nsamples){
   return(cbind(samp_rho, samp_sigma1, samp_sigma2, mu[,1], mu[,2]))
 }
 
-predsamp<-function(theta){
-  var_11<-theta[2]^2  
-  var_21<-theta[1]*theta[2]*theta[3]
-  var_22<-theta[3]^2
-  Sigma<-matrix(data=c(var_11,var_21,var_21,var_22), nrow=2)
-  rmvnorm(predsims, c(theta[4], theta[5]), sigma=Sigma)
+xsim <- function(thetamat, nsims){
+  n <- nrow(thetamat)
+  x <- rep(NA, (n*nsims))
+  for(i in 1:n){
+    x[(i-1)*nsims + 1:(i*nsims)] <- rnorm(nsims, mean=wadup[i,5], sd=wadup[i,3])
+  }
+  x
+}
+
+ysim<-function(theta, x, nsims){
+  n <- nrow(theta)
+  y <- rep(NA, nsims*n)
+  for(i in 1:n){
+    rho <- theta[i,1]
+    sigmas <- theta[i,2:3]
+    mu <- theta[i,4:5]
+    condvar <- (1-rho^2)*sigmas[1]^2
+    for(j in 1:nsims){
+      condmean <- mu[1] + rho*(sigmas[1]/sigmas[2]) * (x[(i-1)*nsims + j] - mu[2])
+      y[(i-1)*nsims + j] <- rnorm(1, mean=condmean, sd=sqrt(condvar))
+    }
+  }
+  y
 }
 
 n<-100000
@@ -199,13 +213,6 @@ mean(a[,5])
 
 #Simulating sample from predictive distribution (not yet reparametrized)
 predsims<-10000
-predsamp<-function(theta){
-  var_11<-theta[2]^2  
-  var_21<-theta[1]*theta[2]*theta[3]
-  var_22<-theta[3]^2
-  Sigma<-matrix(data=c(var_11,var_21,var_21,var_22), nrow=2)
-  rmvnorm(predsims, c(theta[4], theta[5]), sigma=Sigma)
-}
 
 #Prediktiv tetthet
 b<-t(apply(a, 1, FUN=predsamp))
@@ -226,7 +233,7 @@ mean(ifelse(b[,2]>sorted2[3], 1, 0))
 mean(ifelse(b[,2]>sorted2[4], 1, 0))
 
 #Sample rho and other parameters
-n<-100000
+n<-10000
 
 #holder <- rlogis(n,0,1) #prior from berger sun
 #rho <- 2*plogis(holder)-1
@@ -247,60 +254,43 @@ sigma_2 <- 1
 
 meanvec<-c(mu_1, mu_2)
 m<-5
-x_1<-c()
-x_2<-c()
+y<-c()
+x<-c()
 
 for(i in 1:n){
   print(i)
   Sigma <- matrix(data=c(sigma_1^2,sigma_1*sigma_2*rho[i],sigma_1*sigma_2*rho[i],sigma_2^2), nrow=2)
   a <- rmvnorm(m, mean=meanvec, sigma=Sigma)
-  x_1 <- append(a[,1], x_1)
-  x_2 <- append(a[,2], x_2)
+  y <- append(a[,1], y)
+  x <- append(a[,2], x)
 }
 
-x <- cbind(x_1, x_2)
+z <- cbind(y, x)
 
-a_1<-0
-a_2<-0
-a_3<-0
-a_4<-0
-a_5<-0
-b_1<-0
-b_2<-0
-b_3<-0
-b_4<-0
-b_5<-0
+count <- rep(0, m)
 
-parasims<-1
-predsims<-1
 it<-floor(n/m)
 
+parasims <- 2
+predsims <- 1
+
 for (i in 1:(it)){
-  newdata<-x[((i-1)*m+1):(i*m),] #Block of m of the data for each iteration
-  wadup<-alg(newdata,parasims) #simulating parameters for this block
-  sims<-apply(as.matrix(wadup), 1, FUN=predsamp) #simulating predictive samples for simulated parameters
+  newdata<-z[((i-1)*m+1):(i*m),] #Block of m of the data for each iteration
+  wadup<-alg(newdata, parasims) #simulating parameters for this block
+  x_sim <- xsim(wadup, parasims) #simulating x
+  y_x <- ysim(wadup, x, parasims)  #simulating y conditional on x
   
-  sorted_1<-sort(newdata[,1], decreasing=TRUE)
-  sorted_2<-sort(newdata[,2], decreasing=TRUE)
+  sorted <- sort(newdata[,1], decreasing=TRUE)
   
-  a_1 <- a_1 + sum(ifelse(sims[1:predsims,]>sorted_1[1], 1, 0))
-  a_2 <- a_2 + sum(ifelse(sims[1:predsims,]>sorted_1[2], 1, 0))
-  a_3 <- a_3 + sum(ifelse(sims[1:predsims,]>sorted_1[3], 1, 0))
-  a_4 <- a_4 + sum(ifelse(sims[1:predsims,]>sorted_1[4], 1, 0))
-  a_5 <- a_5 + sum(ifelse(sims[1:predsims,]>sorted_1[5], 1, 0))
-  
-  b_1 <- b_1 + sum(ifelse(sims[(predsims+1):(predsims*2),]>sorted_2[1], 1, 0))
-  b_2 <- b_2 + sum(ifelse(sims[(predsims+1):(predsims*2),]>sorted_2[2], 1, 0))
-  b_3 <- b_3 + sum(ifelse(sims[(predsims+1):(predsims*2),]>sorted_2[3], 1, 0))
-  b_4 <- b_4 + sum(ifelse(sims[(predsims+1):(predsims*2),]>sorted_2[4], 1, 0))
-  b_5 <- b_5 + sum(ifelse(sims[(predsims+1):(predsims*2),]>sorted_2[5], 1, 0))
+  for(j in 1:m){
+    count[j] <- count[j] + sum(ifelse(y_x>sorted[j], 1, 0))
+  }
   
   print(i)
 }
 
 tot_comb<-it*parasims*predsims
-c(a_1, a_2, a_3, a_4, a_5)/tot_comb #amount of x_pred_n+1 above each observed x_i up to n
-c(b_1, b_2, b_3, b_4, b_5)/tot_comb #amount of y_pred_n+1 above each observed y_i up to n
+count/tot_comb #amount of y_pred_n+1 above each observed y_i up to n
 seq(from=1/(m+1), to=m/(m+1), by=1/(m+1)) #Expected under t dist
 
 
@@ -441,7 +431,7 @@ rm(list = setdiff(ls(), lsf.str())) #removes all variables except functions
 set.seed(1)
 
 #1.1.1: Sample n priors
-n<-1000
+n<-5
 d<-3 #dimension
 
 muvec<-rep(0,d)
@@ -451,7 +441,7 @@ corrs <- corr_from_pcor(n,d)
 
 #1.1.2 Sample Data given priors
 
-m <- 24 #how many datapoints per iteration.
+m <- 25 #how many datapoints per iteration.
 holdout <- 20
 #We use m-holdout observations to fit the model and then compare
 #sample from predicted (from model) with remaining observations
