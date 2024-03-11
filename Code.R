@@ -166,22 +166,23 @@ xsim <- function(thetamat, nsims){
   n <- nrow(thetamat)
   x <- rep(NA, (n*nsims))
   for(i in 1:n){
-    x[(i-1)*nsims + 1:(i*nsims)] <- rnorm(nsims, mean=wadup[i,5], sd=wadup[i,3])
+    x[((i-1)*nsims + 1):(i*nsims)] <- rnorm(nsims, mean=wadup[i,5], sd=wadup[i,3])
   }
   x
 }
 
-ysim<-function(theta, x, nsims){
+ysim<-function(theta, x){
   n <- nrow(theta)
-  y <- rep(NA, nsims*n)
+  L <- length(x)
+  y <- rep(NA, L)
   for(i in 1:n){
     rho <- theta[i,1]
     sigmas <- theta[i,2:3]
     mu <- theta[i,4:5]
     condvar <- (1-rho^2)*sigmas[1]^2
     for(j in 1:nsims){
-      condmean <- mu[1] + rho*(sigmas[1]/sigmas[2]) * (x[(i-1)*nsims + j] - mu[2])
-      y[(i-1)*nsims + j] <- rnorm(1, mean=condmean, sd=sqrt(condvar))
+      condmean <- mu[1] + rho*(sigmas[1]/sigmas[2]) * (x[((i-1)*nsims + j)] - mu[2])
+      y[((i-1)*nsims + j)] <- rnorm(1, mean=condmean, sd=sqrt(condvar))
     }
   }
   y
@@ -233,7 +234,7 @@ mean(ifelse(b[,2]>sorted2[3], 1, 0))
 mean(ifelse(b[,2]>sorted2[4], 1, 0))
 
 #Sample rho and other parameters
-n<-10000
+n<-100000
 
 #holder <- rlogis(n,0,1) #prior from berger sun
 #rho <- 2*plogis(holder)-1
@@ -271,14 +272,14 @@ count <- rep(0, m)
 
 it<-floor(n/m)
 
-parasims <- 2
+parasims <- 100
 predsims <- 1
 
 for (i in 1:(it)){
-  newdata<-z[((i-1)*m+1):(i*m),] #Block of m of the data for each iteration
-  wadup<-alg(newdata, parasims) #simulating parameters for this block
-  x_sim <- xsim(wadup, parasims) #simulating x
-  y_x <- ysim(wadup, x, parasims)  #simulating y conditional on x
+  newdata <- z[((i-1)*m+1):(i*m),] #Block of m of the data for each iteration
+  wadup <- alg(newdata, parasims) #simulating parameters for this block
+  x_sim <- xsim(wadup, predsims) #simulating x
+  y_x <- ysim(wadup, x)  #simulating y conditional on x
   
   sorted <- sort(newdata[,1], decreasing=TRUE)
   
@@ -287,6 +288,7 @@ for (i in 1:(it)){
   }
   
   print(i)
+  
 }
 
 tot_comb<-it*parasims*predsims
