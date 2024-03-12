@@ -180,9 +180,9 @@ ysim<-function(theta, x){
     sigmas <- theta[i,2:3]
     mu <- theta[i,4:5]
     condvar <- (1-rho^2)*sigmas[1]^2
-    for(j in 1:nsims){
-      condmean <- mu[1] + rho*(sigmas[1]/sigmas[2]) * (x[((i-1)*nsims + j)] - mu[2])
-      y[((i-1)*nsims + j)] <- rnorm(1, mean=condmean, sd=sqrt(condvar))
+    for(j in 1:(L/n)){
+      condmean <- mu[1] + rho*(sigmas[1]/sigmas[2]) * (x[((i-1)*(L/n) + j)] - mu[2])
+      y[((i-1)*(L/n) + j)] <- rnorm(1, mean=condmean, sd=sqrt(condvar))
     }
   }
   y
@@ -234,11 +234,11 @@ mean(ifelse(b[,2]>sorted2[3], 1, 0))
 mean(ifelse(b[,2]>sorted2[4], 1, 0))
 
 #Sample rho and other parameters
-n<-100000
+n<-10000
 
 #holder <- rlogis(n,0,1) #prior from berger sun
 #rho <- 2*plogis(holder)-1
-rho<-runif(n, -0.99, 0.99)
+rho<-runif(n, -0.995, 0.995)
 
 #rho<-seq(from=-0.99, to=0.99, length.out=n)
 #rho<-runif(n, min=-0.0000001, max=0.0000001)
@@ -272,14 +272,14 @@ count <- rep(0, m)
 
 it<-floor(n/m)
 
-parasims <- 100
-predsims <- 1
+parasims <- 20
+predsims <- 100
 
 for (i in 1:(it)){
   newdata <- z[((i-1)*m+1):(i*m),] #Block of m of the data for each iteration
   wadup <- alg(newdata, parasims) #simulating parameters for this block
   x_sim <- xsim(wadup, predsims) #simulating x
-  y_x <- ysim(wadup, x)  #simulating y conditional on x
+  y_x <- ysim(wadup, x_sim)  #simulating y conditional on x
   
   sorted <- sort(newdata[,1], decreasing=TRUE)
   
@@ -309,7 +309,7 @@ init_3 <- c(sqrt(diag(covmat)), pcorrmat[lower.tri(pcorrmat)==TRUE])
 
 diagnostic_obj_3 <- MCMCmetrop1R(improved_target_dens, theta.init=init_3, 
                                  burnin = 1, x=data_3, 
-                                 mcmc=2000)
+                                 mcmc=200000)
 
 effectiveSize(diagnostic_obj_3)
 
@@ -343,7 +343,7 @@ rm(list = setdiff(ls(), lsf.str()))
 set.seed(1)
 
 #1: Sample priors
-n <- 1000 #samples
+n <- 100 #samples
 d <- 3 #dimension
 
 muvec<-rep(0,d)
