@@ -433,7 +433,7 @@ rm(list = setdiff(ls(), lsf.str())) #removes all variables except functions
 set.seed(1)
 
 #1.1.1: Sample n priors
-n<-5
+n<-100
 d<-3 #dimension
 
 muvec<-rep(0,d)
@@ -568,7 +568,7 @@ colnames(infomat_b) <- c("Predictions", "Actual", "Residual", "Estimated SE", "C
 for(i in 1:n){
   y <- Data_mat[(((i-1)*m)+1):(i*m - holdout), 1]
   X <- Data_mat[(((i-1)*m)+1):(i*m - holdout), 2:d]
-  mod_obj <- blasso(X, y, thin=thinning, T=(burninit+samps))
+  mod_obj <- blasso(X, y, thin=thinning, T=(burninit+samps), normalize=FALSE)
   betas<-mod_obj$beta[(burninit:(burninit + samps - 1)),] 
   mu_blasso<-mod_obj$mu[(burninit:(burninit + samps - 1))]
   betamat_b[((i-1)*samps+1):(i*samps),] <- cbind(mu_blasso, betas)
@@ -618,11 +618,11 @@ rm(list = setdiff(ls(), lsf.str())) #removes all variables except functions
 
 set.seed(2)
 
-n <- 10
+n <- 100
 d <- 3
 p <- (d-1) #for notational purposes, denote vector (y, x_1 , ..., x_p)
-m <- 1000
-holdout <- 10
+m <- 120
+holdout <- 20
 
 r <- 1
 delta <- 1 
@@ -681,10 +681,11 @@ for(i in 1:n){
 }
 
 #1.2.2 Bayesian lasso
+burninit<-2000
 samps<-20
 batch_size <- round(sqrt(samps*holdout))
-burninit<-2000
-thinning <- 10
+thinning <- NULL
+betamat_b <- matrix(NA, nrow=n*samps, ncol=d)
 infomat_b <- matrix(NA, nrow = holdout*samps*n, ncol=5)
 colnames(infomat_b) <- c("Predictions", "Actual", "Residual", "Estimated SE", "Corrected MSE")
 
@@ -693,8 +694,9 @@ for(i in 1:n){
   y <- Data_mat[(((i-1)*m)+1):(i*m - holdout), 1]
   X <- Data_mat[(((i-1)*m)+1):(i*m - holdout), 2:d]
   mod_obj <- blasso(X, y, thin=thinning, T=(burninit+samps))
-  betas<-mod_obj$beta[(burninit:(burninit + samps)),] 
-  mu_blasso<-mod_obj$mu[(burninit:(burninit + samps))]
+  betas<-mod_obj$beta[(burninit:(burninit + samps - 1)),] 
+  mu_blasso<-mod_obj$mu[(burninit:(burninit + samps - 1))]
+  betamat_b[((i-1)*samps+1):(i*samps),] <- cbind(mu_blasso, betas)
   sigmasq_blasso <- mod_obj$s2[(burninit:(burninit + samps))]
   for(j in 1:samps){
     for(k in 1:holdout){
@@ -728,8 +730,8 @@ infomat_b[,5] <- infomat_b[,3]^2 - infomat_b[,4]^2
 #1.2.3 Our model
 
 para_len <- 2*d + (d*(d-1)/2)
-mcmcsamps <- 100
-burnin_mcmc <- 3000
+mcmcsamps <- 3000
+burnin_mcmc <- 500
 
 paramat_pcor <- metrop_samp(n, m, para_len, Data_mat, mcmcsamps, 
                             improved_target_dens, burn=burnin_mcmc, holdout=holdout)
@@ -769,7 +771,6 @@ for(i in 1:n){
   print(i)
   for(j in 1:mcmcsamps){
     theta <- paramat[((i-1)*mcmcsamps + j),] # 1 sample from posterior
-    
     corrmat <- diag(1, nrow=d)
     corrmat[lower.tri(corrmat)==TRUE] <- theta[(2*d + 1):para_len]
     corrmat <- corrmat + t(corrmat) - diag(diag(corrmat))
@@ -816,10 +817,6 @@ infomat[,5] <- infomat[,3]^2 - infomat[,4]^2
 mean(infomat[,5])
 mean(infomat_b[,5])
 
-par(mfrow=c(2,1))
-hist(resid_vec_ourmod, breaks=100)
-hist(resid_vec_blasso, breaks=100)
-
 #plots
 
 #betamat d=3
@@ -857,7 +854,7 @@ hist(betamat_b[,3], breaks=50, main="Beta_2")
 hist(betamat_b[,4], breaks=50, main="Beta_3")
 hist(betamat_b[,5], breaks=50, main="Beta_3")
 
-
+# ourmod d=3
 par(mfrow=c(3,3))
 hist(paramat[,1], breaks=100, main="mu_1")
 hist(paramat[,2], breaks=100, main="mu_2")
