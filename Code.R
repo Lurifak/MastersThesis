@@ -621,7 +621,7 @@ set.seed(2)
 n <- 100
 d <- 3
 p <- (d-1) #for notational purposes, denote vector (y, x_1 , ..., x_p)
-m <- 120
+m <- 5020
 holdout <- 20
 
 r <- 1
