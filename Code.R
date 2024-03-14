@@ -236,14 +236,8 @@ mean(ifelse(b[,2]>sorted2[4], 1, 0))
 #Sample rho and other parameters
 n<-10000
 
-#holder <- rlogis(n,0,1) #prior from berger sun
-#rho <- 2*plogis(holder)-1
 rho<-runif(n, -0.995, 0.995)
 
-#rho<-seq(from=-0.99, to=0.99, length.out=n)
-#rho<-runif(n, min=-0.0000001, max=0.0000001)
-
-#rho<-seq(from=-0.99, to=0.99, length.out=n)
 hist(rho)
 
 mu_1 <- 0
@@ -260,7 +254,7 @@ x<-c()
 
 for(i in 1:n){
   print(i)
-  Sigma <- matrix(data=c(sigma_1^2,sigma_1*sigma_2*rho[i],sigma_1*sigma_2*rho[i],sigma_2^2), nrow=2)
+  Sigma <- matrix(data=c(sigma_1^2, sigma_1*sigma_2*rho[i], sigma_1*sigma_2*rho[i], sigma_2^2), nrow=2)
   a <- rmvnorm(m, mean=meanvec, sigma=Sigma)
   y <- append(a[,1], y)
   x <- append(a[,2], x)
@@ -272,8 +266,12 @@ count <- rep(0, m)
 
 it<-floor(n/m)
 
-parasims <- 20
-predsims <- 100
+parasims <- 100
+predsims <- 10
+
+paramat <- matrix(NA, nrow=parasims*it, ncol=5)
+infomat <- matrix(NA, nrow = holdout*mcmcsamps*n, ncol=5)
+colnames(infomat) <- c("Predictions", "Actual", "Residual", "Estimated SE", "Corrected MSE")
 
 for (i in 1:(it)){
   newdata <- z[((i-1)*m+1):(i*m),] #Block of m of the data for each iteration
@@ -289,13 +287,35 @@ for (i in 1:(it)){
   
   print(i)
   
+  paramat[((i-1)*parasims + 1): (i*parasims),1:2] <- wadup[,4:5]
+  paramat[((i-1)*parasims + 1): (i*parasims),3:4] <- wadup[,2:3]
+  paramat[((i-1)*parasims + 1): (i*parasims),5] <- wadup[,1]
 }
+
+#Holdout comparisons
+holdouts <- 2
+
+hold_rho <- runif(holdouts*n, -0.995, 0.995)
+
+for(i in 1:(holdouts*n)){
+  
+}
+betas <- betafrommvn(paramat, 2)
 
 tot_comb<-it*parasims*predsims
 count/tot_comb #amount of y_pred_n+1 above each observed y_i up to n
 seq(from=1/(m+1), to=m/(m+1), by=1/(m+1)) #Expected under t dist
 
+par(mfrow=c(1,2))
+hist(betas[,1], main="Beta_0")
+hist(betas[,2], main="Beta_1")
 
+par(mfrow=c(2,3))
+hist(paramat[,1], main="mu_1")
+hist(paramat[,2], main="mu_2")
+hist(paramat[,3], main="sigma_1", breaks=30, xlim=c(0,10))
+hist(paramat[,4], main="sigma_2", breaks=30, xlim=c(0,10))
+hist(paramat[,5], main="rho")
 
 # Diagnostics (compute ESS, trace plots, etc... for different blocks)
 
@@ -443,7 +463,7 @@ corrs <- corr_from_pcor(n,d)
 
 #1.1.2 Sample Data given priors
 
-m <- 25 #how many datapoints per iteration.
+m <- 1020 #how many datapoints per iteration.
 holdout <- 20
 #We use m-holdout observations to fit the model and then compare
 #sample from predicted (from model) with remaining observations
@@ -472,7 +492,7 @@ for(i in 1:n){
 #1.1.3 posterior sampling
 
 para_len <- 2*d + (d*(d-1)/2)
-mcmcsamps <- 3000
+mcmcsamps <- 2000
 burnin_mcmc <- 500
 
 paramat_pcor <- metrop_samp(n, m, para_len, Data_mat, mcmcsamps, 
@@ -556,8 +576,8 @@ infomat[,5] <- infomat[,3]^2 - infomat[,4]^2
 
 #1.1.6 Bayesian lasso
 
-burninit<-2000
-samps<-20
+burninit<-3000
+samps<-100
 batch_size <- round(sqrt(samps*holdout))
 thinning <- NULL
 betamat_b <- matrix(NA, nrow=n*samps, ncol=d)
@@ -610,6 +630,37 @@ par(mfrow=c(2,1))
 hist(infomat[,3], breaks=100)
 hist(infomat_b[,3], breaks=100)
 
+#Looking at first realization
+realization1<-Data_mat[1:m,]
+ourmod_mvn <- paramat[1:mcmcsamps,]
+ourmod_beta <- betamat[1:mcmcsamps,]
+blasso_beta <- betamat_b[1:samps,]
+
+colnames(realization1) <- c("y","x_1","x_2")
+lmcoef <- lm(y ~., data=as.data.frame(realization1))$coef #lm coefficients
+
+lmcoef
+colMeans(ourmod_beta) #Our model coefficients
+colMeans(blasso_beta) #Bayesian Lasso coefficients
+
+summary(betamat[1:mcmcsamps,]) 
+summary(betamat_b[1:samps,])
+
+par(mfrow=c(2,3)) #top row our model
+hist(ourmod_beta[,1], breaks=20, main="Beta_0")
+hist(ourmod_beta[,2], breaks=20, main="Beta_1")
+hist(ourmod_beta[,3], breaks=20, main="Beta_2")
+hist(blasso_beta[,1], breaks=20, main="Beta_0")
+hist(blasso_beta[,2], breaks=20, main="Beta_1")
+hist(blasso_beta[,3], breaks=20, main="Beta_2")
+
+# Estimation of intercept way less stable than in B. lasso (why?)
+# Have seen that it takes a lot of data to estimate correlation precisely 
+# (40000 samples to have less than 0.01 error in correlation)
+# If intercept calculation sensitive to small changes in 
+# correlation then maybe we have some explanation
+
+
 # Generating data from bayesian lasso and then comparing
 
 #1.2.1 Generating priors
@@ -621,7 +672,7 @@ set.seed(2)
 n <- 100
 d <- 3
 p <- (d-1) #for notational purposes, denote vector (y, x_1 , ..., x_p)
-m <- 5020
+m <- 2020
 holdout <- 20
 
 r <- 1
@@ -682,7 +733,7 @@ for(i in 1:n){
 
 #1.2.2 Bayesian lasso
 burninit<-2000
-samps<-20
+samps<-100
 batch_size <- round(sqrt(samps*holdout))
 thinning <- NULL
 betamat_b <- matrix(NA, nrow=n*samps, ncol=d)
@@ -884,3 +935,5 @@ hist(paramat[,13], breaks=100, main="rho_24")
 hist(paramat[,14], breaks=100, main="rho_34")
 
 colMeans(paramat)
+
+
