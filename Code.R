@@ -94,7 +94,7 @@ metrop_samp <- function(n, m, para_len, Data_mat, mcmcsamps, target_dens, burn=5
         D_S_inv <- solve(diag(sqrt(diag(S_inv))))
         corrmat <- (D_S_inv %*% S_inv %*% D_S_inv)
         Sigma <- diag(sigmas) %*% corrmat %*% diag(sigmas)
-        mu[j,] <- rmvnorm(1, mean=colMeans(block), sigma=Sigma)
+        mu[j,] <- rmvnorm(1, mean=(sqrt(n)*colMeans(block)), sigma=Sigma) / sqrt(n)
       }
       paramat[(1 + (i-1)*mcmcsamps):(i*mcmcsamps),] <- cbind(mu, sigma_pcor)
     }, error=function(e){})
@@ -363,7 +363,7 @@ rm(list = setdiff(ls(), lsf.str()))
 set.seed(1)
 
 #1: Sample priors
-n <- 100 #samples
+n <- 5 #samples
 d <- 3 #dimension
 
 muvec<-rep(0,d)
@@ -492,7 +492,7 @@ for(i in 1:n){
 #1.1.3 posterior sampling
 
 para_len <- 2*d + (d*(d-1)/2)
-mcmcsamps <- 2000
+mcmcsamps <- 3000
 burnin_mcmc <- 500
 
 paramat_pcor <- metrop_samp(n, m, para_len, Data_mat, mcmcsamps, 
@@ -653,6 +653,13 @@ hist(ourmod_beta[,3], breaks=20, main="Beta_2")
 hist(blasso_beta[,1], breaks=20, main="Beta_0")
 hist(blasso_beta[,2], breaks=20, main="Beta_1")
 hist(blasso_beta[,3], breaks=20, main="Beta_2")
+
+summary(ourmod_mvn)
+
+par(mfrow=c(1,3))
+hist(ourmod_mvn[,7])
+hist(ourmod_mvn[,8])
+hist(ourmod_mvn[,9])
 
 # Estimation of intercept way less stable than in B. lasso (why?)
 # Have seen that it takes a lot of data to estimate correlation precisely 
@@ -897,13 +904,13 @@ hist(betamat[,1], breaks=50, main="Beta_0")
 hist(betamat[,2], breaks=50, main="Beta_1")
 hist(betamat[,3], breaks=50, main="Beta_2")
 hist(betamat[,4], breaks=50, main="Beta_3")
-hist(betamat[,5], breaks=50, main="Beta_3")
+hist(betamat[,5], breaks=50, main="Beta_4")
 
 hist(betamat_b[,1], breaks=50, main="Beta_0")
 hist(betamat_b[,2], breaks=50, main="Beta_1")
 hist(betamat_b[,3], breaks=50, main="Beta_2")
 hist(betamat_b[,4], breaks=50, main="Beta_3")
-hist(betamat_b[,5], breaks=50, main="Beta_3")
+hist(betamat_b[,5], breaks=50, main="Beta_4")
 
 # ourmod d=3
 par(mfrow=c(3,3))
