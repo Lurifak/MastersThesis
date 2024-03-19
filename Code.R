@@ -450,7 +450,7 @@ rowMeans(probmat)
 
 rm(list = setdiff(ls(), lsf.str())) #removes all variables except functions
 
-set.seed(1)
+set.seed(3)
 
 #1.1.1: Sample n priors
 n<-100
@@ -463,7 +463,7 @@ corrs <- corr_from_pcor(n,d)
 
 #1.1.2 Sample Data given priors
 
-m <- 1020 #how many datapoints per iteration.
+m <- 70 #how many datapoints per iteration.
 holdout <- 20
 #We use m-holdout observations to fit the model and then compare
 #sample from predicted (from model) with remaining observations
