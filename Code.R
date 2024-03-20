@@ -363,7 +363,7 @@ rm(list = setdiff(ls(), lsf.str()))
 set.seed(1)
 
 #1: Sample priors
-n <- 5 #samples
+n <- 1000 #samples
 d <- 3 #dimension
 
 muvec<-rep(0,d)
@@ -463,7 +463,7 @@ corrs <- corr_from_pcor(n,d)
 
 #1.1.2 Sample Data given priors
 
-m <- 70 #how many datapoints per iteration.
+m <- 2020 #how many datapoints per iteration.
 holdout <- 20
 #We use m-holdout observations to fit the model and then compare
 #sample from predicted (from model) with remaining observations
@@ -576,8 +576,8 @@ infomat[,5] <- infomat[,3]^2 - infomat[,4]^2
 
 #1.1.6 Bayesian lasso
 
-burninit<-3000
-samps<-100
+burninit<-500
+samps<-200
 batch_size <- round(sqrt(samps*holdout))
 thinning <- NULL
 betamat_b <- matrix(NA, nrow=n*samps, ncol=d)
@@ -679,7 +679,7 @@ set.seed(2)
 n <- 100
 d <- 3
 p <- (d-1) #for notational purposes, denote vector (y, x_1 , ..., x_p)
-m <- 2020
+m <- 1020
 holdout <- 20
 
 r <- 1
@@ -720,11 +720,6 @@ for(i in 1:n){
   fulldata[(1 + ((i-1)*m)):(i*m),] <- rmvnorm(m, muvec, Sigma)
 }
 
-#Standardizing X, as assumed for B. Lasso
-for(i in 1:p){
-  fulldata[,i] <- (fulldata[,i] - mean(fulldata[,i]))/sd(fulldata[,i])
-}
-
 #Generate y conditional on X, \Beta, \sigma^2 (mu not included not sure how to and if i should)
 y <- rep(NA, n*m)
 for(i in 1:(n)){
@@ -733,6 +728,11 @@ for(i in 1:(n)){
 }
 
 Data_mat <- cbind(y,fulldata)
+
+#Standardizing, as assumed for B. Lasso
+for(i in 1:d){
+  Data_mat[,i] <- (Data_mat[,i] - mean(Data_mat[,i]))/sd(Data_mat[,i])
+}
 
 for(i in 1:n){
   mth_obs[((i-1)*holdout+1):(i*holdout),]<-Data_mat[((i*m) - (holdout-1)):(i*m),]
@@ -751,7 +751,7 @@ colnames(infomat_b) <- c("Predictions", "Actual", "Residual", "Estimated SE", "C
 for(i in 1:n){
   y <- Data_mat[(((i-1)*m)+1):(i*m - holdout), 1]
   X <- Data_mat[(((i-1)*m)+1):(i*m - holdout), 2:d]
-  mod_obj <- blasso(X, y, thin=thinning, T=(burninit+samps))
+  mod_obj <- blasso(X, y, thin=thinning, T=(burninit+samps), normalize=FALSE)
   betas<-mod_obj$beta[(burninit:(burninit + samps - 1)),] 
   mu_blasso<-mod_obj$mu[(burninit:(burninit + samps - 1))]
   betamat_b[((i-1)*samps+1):(i*samps),] <- cbind(mu_blasso, betas)
@@ -789,7 +789,7 @@ infomat_b[,5] <- infomat_b[,3]^2 - infomat_b[,4]^2
 
 para_len <- 2*d + (d*(d-1)/2)
 mcmcsamps <- 3000
-burnin_mcmc <- 500
+burnin_mcmc <- 1000
 
 paramat_pcor <- metrop_samp(n, m, para_len, Data_mat, mcmcsamps, 
                             improved_target_dens, burn=burnin_mcmc, holdout=holdout)
