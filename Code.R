@@ -4,6 +4,9 @@ library(corpcor)
 library(clusterGeneration)
 library(monomvn)
 library(coda)
+library(ggplot2)
+library(ggalt)
+
 
 improved_target_dens<-function(theta,x){
   L <- length(theta)
@@ -245,6 +248,10 @@ mu_2 <- 0
 sigma_1 <- 1
 sigma_2 <- 1
 
+#Visualization
+
+par_mat <- cbind(rep(mu_1, n), rep(mu_2, n), rep(sigma_1, n), rep(sigma_2, n), rho)
+
 #Sampling data
 
 meanvec<-c(mu_1, mu_2)
@@ -355,6 +362,25 @@ effectiveSize(diagnostic_obj_5)
 
 plot(diagnostic_obj_5)
 
+#Visualizing betas
+n <- 100000
+d <- 3
+muvec<-rep(0,d)
+sigmavec<-rep(1,d)
+corrs <- corr_from_pcor(n,d)
+
+par_mat <- cbind(matrix(muvec, nrow=n, ncol=d), matrix(sigmavec, nrow=n, ncol=d), t(corrs))
+
+prior_betas <- betafrommvn(par_mat, d)
+colnames(prior_betas) <- c("Beta_0", "Beta_1", "Beta_2")
+prior_betas
+
+
+m <- ggplot(data = prior_betas, mapping = aes(x = Beta_1, y = Beta_2)) + 
+     geom_point() + xlim(-7.5, 7.5) + ylim(-7.5,7.5)
+  
+
+m + geom_density_2d()
 
 #General check of predictive distribution for >= 3 dimensions
 
@@ -371,7 +397,6 @@ sigmavec<-rep(1,d)
 
 #Sampling n realizations of correlations with uniform marginals
 corrs <- corr_from_pcor(n,d)
-
 
 #2 Sample Data given priors
 
@@ -450,10 +475,10 @@ rowMeans(probmat)
 
 rm(list = setdiff(ls(), lsf.str())) #removes all variables except functions
 
-set.seed(3)
+set.seed(4)
 
 #1.1.1: Sample n priors
-n<-100
+n<-10000
 d<-3 #dimension
 
 muvec<-rep(0,d)
@@ -463,7 +488,7 @@ corrs <- corr_from_pcor(n,d)
 
 #1.1.2 Sample Data given priors
 
-m <- 2020 #how many datapoints per iteration.
+m <- 520 #how many datapoints per iteration.
 holdout <- 20
 #We use m-holdout observations to fit the model and then compare
 #sample from predicted (from model) with remaining observations
@@ -510,10 +535,10 @@ for(i in 1:n){
   }
 }
 
-mth_obs <- mth_obs[removals,]
+mth_obs_1 <- mth_obs[removals,]
 
 n_missing_rows <- sum(ifelse(cond, 1, 0))
-n <- n - n_missing_rows
+n_1 <- n - n_missing_rows
 paramat_pcor <- paramat_pcor[complete.cases(paramat_pcor),]
 
 
@@ -525,12 +550,12 @@ betamat <- betafrommvn(paramat, d)
 #1.1.5 residuals in 1 dimension
 
 batch_size <- round(sqrt(mcmcsamps*holdout))
-infomat <- matrix(NA, nrow = holdout*mcmcsamps*n, ncol=5)
+infomat <- matrix(NA, nrow = holdout*mcmcsamps*n_1, ncol=5)
 colnames(infomat) <- c("Predictions", "Actual", "Residual", "Estimated SE", "Corrected MSE")
 
-for(i in 1:n){
+for(i in 1:n_1){
+  print(i)
   for(j in 1:mcmcsamps){
-    print(i)
     theta <- paramat[((i-1)*mcmcsamps + j),] # 1 sample from posterior
     
     corrmat <- diag(1, nrow=d)
@@ -548,27 +573,27 @@ for(i in 1:n){
     condvar<-as.numeric(Sigma_11 - Sigma_12 %*% Sigma_22_inv %*%  Sigma_21)
     
     for(k in 1:holdout){
-      condmean <- as.numeric(mu_1 + Sigma_12 %*% Sigma_22_inv %*% (mth_obs[(k+((i-1)*holdout)),2:d] - mu_2))
+      condmean <- as.numeric(mu_1 + Sigma_12 %*% Sigma_22_inv %*% (mth_obs_1[(k+((i-1)*holdout)),2:d] - mu_2))
       
       # 1 sample of predicted y given x_1, ... on observation not included in model
       predsim <- rnorm(1, mean = condmean, sd <- sqrt(condvar))
       
       infomat[((i-1)*(mcmcsamps*holdout) + (j-1)*holdout + k),1] <- predsim
-      infomat[((i-1)*(mcmcsamps*holdout) + (j-1)*holdout + k),2] <- mth_obs[(k+((i-1)*holdout)),1]
-      infomat[(i-1)*(mcmcsamps*holdout) + (j-1)*holdout + k, 3] <- (mth_obs[(k+((i-1)*holdout)),1] - predsim)
+      infomat[((i-1)*(mcmcsamps*holdout) + (j-1)*holdout + k),2] <- mth_obs_1[(k+((i-1)*holdout)),1]
+      infomat[(i-1)*(mcmcsamps*holdout) + (j-1)*holdout + k, 3] <- (mth_obs_1[(k+((i-1)*holdout)),1] - predsim)
     }
   }
 }
 
 placeholder <- matrix(data=NA, nrow=mcmcsamps*holdout, ncol=n)
 
-for(i in 1:n){
+for(i in 1:n_1){
   placeholder[1:(mcmcsamps*holdout), i] <- infomat[((i-1)*(mcmcsamps*holdout)+1):(i*mcmcsamps*holdout),1]
 }
 
 temp <- batchSE(as.mcmc(placeholder), batchSize = batch_size)
 
-for(i in 1:n){
+for(i in 1:n_1){
   infomat[((i-1)*(mcmcsamps*holdout)+1):(i*mcmcsamps*holdout),4] <- rep(temp[i], (mcmcsamps*holdout))
 }
 
@@ -576,7 +601,7 @@ infomat[,5] <- infomat[,3]^2 - infomat[,4]^2
 
 #1.1.6 Bayesian lasso
 
-burninit<-500
+burninit<-1000
 samps<-200
 batch_size <- round(sqrt(samps*holdout))
 thinning <- NULL
@@ -598,7 +623,6 @@ for(i in 1:n){
       pred <- rnorm(1, mean = mu_blasso[j] + mth_obs[(k+((i-1)*holdout)),2:d] %*% betas[j,], 
                     sd = sqrt(sigmasq_blasso[j]))
       actual <- mth_obs[k + (i-1)*holdout,1]
-      
       infomat_b[((i-1)*(samps*holdout) + (j-1)*holdout + k), 1] <- pred
       infomat_b[((i-1)*(samps*holdout) + (j-1)*holdout + k), 2] <- mth_obs[(k+((i-1)*holdout)),1]
       infomat_b[((i-1)*(samps*holdout) + (j-1)*holdout + k), 3] <- pred - actual
@@ -679,7 +703,7 @@ set.seed(2)
 n <- 100
 d <- 3
 p <- (d-1) #for notational purposes, denote vector (y, x_1 , ..., x_p)
-m <- 1020
+m <- 70
 holdout <- 20
 
 r <- 1
@@ -739,8 +763,8 @@ for(i in 1:n){
 }
 
 #1.2.2 Bayesian lasso
-burninit<-2000
-samps<-100
+burninit<-1000
+samps<-200
 batch_size <- round(sqrt(samps*holdout))
 thinning <- NULL
 betamat_b <- matrix(NA, nrow=n*samps, ncol=d)
@@ -807,10 +831,10 @@ for(i in 1:n){
   }
 }
 
-mth_obs <- mth_obs[removals,]
+mth_obs_1 <- mth_obs[removals,]
 
 n_missing_rows <- sum(ifelse(cond, 1, 0))
-n <- n - n_missing_rows
+n_1 <- n - n_missing_rows
 paramat_pcor <- paramat_pcor[complete.cases(paramat_pcor),]
 
 
@@ -825,7 +849,7 @@ batch_size <- round(sqrt(mcmcsamps*holdout))
 infomat <- matrix(NA, nrow = holdout*mcmcsamps*n, ncol=5)
 colnames(infomat) <- c("Predictions", "Actual", "Residual", "Estimated SE", "Corrected MSE")
 
-for(i in 1:n){
+for(i in 1:n_1){
   print(i)
   for(j in 1:mcmcsamps){
     theta <- paramat[((i-1)*mcmcsamps + j),] # 1 sample from posterior
@@ -844,27 +868,27 @@ for(i in 1:n){
     condvar<-as.numeric(Sigma_11 - Sigma_12 %*% Sigma_22_inv %*%  Sigma_21)
     
     for(k in 1:holdout){
-      condmean <- as.numeric(mu_1 + Sigma_12 %*% Sigma_22_inv %*% (mth_obs[(k+((i-1)*holdout)),2:d] - mu_2))
+      condmean <- as.numeric(mu_1 + Sigma_12 %*% Sigma_22_inv %*% (mth_obs_1[(k+((i-1)*holdout)),2:d] - mu_2))
       
       # 1 sample of predicted y given x_1, ... on observation not included in model
       predsim <- rnorm(1, mean = condmean, sd <- sqrt(condvar))
       
       infomat[((i-1)*(mcmcsamps*holdout) + (j-1)*holdout + k),1] <- predsim
-      infomat[((i-1)*(mcmcsamps*holdout) + (j-1)*holdout + k),2] <- mth_obs[(k+((i-1)*holdout)),1]
-      infomat[(i-1)*(mcmcsamps*holdout) + (j-1)*holdout + k, 3] <- (mth_obs[(k+((i-1)*holdout)),1] - predsim)
+      infomat[((i-1)*(mcmcsamps*holdout) + (j-1)*holdout + k),2] <- mth_obs_1[(k+((i-1)*holdout)),1]
+      infomat[(i-1)*(mcmcsamps*holdout) + (j-1)*holdout + k, 3] <- (mth_obs_1[(k+((i-1)*holdout)),1] - predsim)
     }
   }
 }
 
 placeholder <- matrix(data=NA, nrow=mcmcsamps*holdout, ncol=n)
 
-for(i in 1:n){
+for(i in 1:n_1){
   placeholder[1:(mcmcsamps*holdout), i] <- infomat[((i-1)*(mcmcsamps*holdout)+1):(i*mcmcsamps*holdout),1]
 }
 
 temp <- batchSE(as.mcmc(placeholder), batchSize = batch_size)
 
-for(i in 1:n){
+for(i in 1:n_1){
   print(i)
   infomat[((i-1)*(mcmcsamps*holdout)+1):(i*mcmcsamps*holdout),4] <- rep(temp[i], (mcmcsamps*holdout))
 }
