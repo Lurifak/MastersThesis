@@ -236,8 +236,10 @@ mean(ifelse(b[,2]>sorted2[2], 1, 0))
 mean(ifelse(b[,2]>sorted2[3], 1, 0))
 mean(ifelse(b[,2]>sorted2[4], 1, 0))
 
+
+
 #Sample rho and other parameters
-n<-10000
+n<-1000
 
 rho<-runif(n, -0.995, 0.995)
 
@@ -248,23 +250,24 @@ mu_2 <- 0
 sigma_1 <- 1
 sigma_2 <- 1
 
-#Visualization
-
-par_mat <- cbind(rep(mu_1, n), rep(mu_2, n), rep(sigma_1, n), rep(sigma_2, n), rho)
-
 #Sampling data
 
 meanvec<-c(mu_1, mu_2)
-m<-5
+m <- 100
+holdout <- 2
 y<-c()
 x<-c()
+holdout_x <- c()
+holdout_y <- c()
 
 for(i in 1:n){
   print(i)
   Sigma <- matrix(data=c(sigma_1^2, sigma_1*sigma_2*rho[i], sigma_1*sigma_2*rho[i], sigma_2^2), nrow=2)
-  a <- rmvnorm(m, mean=meanvec, sigma=Sigma)
-  y <- append(a[,1], y)
-  x <- append(a[,2], x)
+  a <- rmvnorm((m+holdout), mean=meanvec, sigma=Sigma)
+  y <- append(a[1:(m), 1], y)
+  x <- append(a[1:(m), 2], x)
+  holdout_y <- append(a[(m+1):(m+holdout), 1], holdout_y)
+  holdout_x <- append(a[(m+1):(m+holdout), 2], holdout_x)
 }
 
 z <- cbind(y, x)
@@ -273,15 +276,16 @@ count <- rep(0, m)
 
 it<-floor(n/m)
 
-parasims <- 100
+parasims <- 10
 predsims <- 10
 
-paramat <- matrix(NA, nrow=parasims*it, ncol=5)
-infomat <- matrix(NA, nrow = holdout*mcmcsamps*n, ncol=5)
-colnames(infomat) <- c("Predictions", "Actual", "Residual", "Estimated SE", "Corrected MSE")
+residvec <- rep(NA, n*holdout)
 
-for (i in 1:(it)){
-  newdata <- z[((i-1)*m+1):(i*m),] #Block of m of the data for each iteration
+paramat <- matrix(NA, nrow=parasims*n, ncol=5)
+
+for (i in 1:(n)){
+  print(i)
+  newdata <- z[((i-1)*m + 1): (i*m),] #Block of m of the data for each iteration
   wadup <- alg(newdata, parasims) #simulating parameters for this block
   x_sim <- xsim(wadup, predsims) #simulating x
   y_x <- ysim(wadup, x_sim)  #simulating y conditional on x
@@ -289,27 +293,25 @@ for (i in 1:(it)){
   sorted <- sort(newdata[,1], decreasing=TRUE)
   
   for(j in 1:m){
-    count[j] <- count[j] + sum(ifelse(y_x>sorted[j], 1, 0))
+    count[j] <- count[j] + sum(ifelse(y_x>sorted[j], 1, 0)) #counting times ysim above observed vals
   }
   
-  print(i)
+  hold <- cbind(holdout_y[((i-1)*holdout + 1):(i*holdout)], holdout_x[((i-1)*holdout + 1):(i*holdout)])
+  y_sim <- ysim(wadup, hold[,2])
+  
+  for(k in 1:holdout){
+    residvec[(i-1)*(holdout) + k] <- y_sim[k] - hold[k,1]
+  }
   
   paramat[((i-1)*parasims + 1): (i*parasims),1:2] <- wadup[,4:5]
   paramat[((i-1)*parasims + 1): (i*parasims),3:4] <- wadup[,2:3]
   paramat[((i-1)*parasims + 1): (i*parasims),5] <- wadup[,1]
-}
-
-#Holdout comparisons
-holdouts <- 2
-
-hold_rho <- runif(holdouts*n, -0.995, 0.995)
-
-for(i in 1:(holdouts*n)){
   
 }
-betas <- betafrommvn(paramat, 2)
 
-tot_comb<-it*parasims*predsims
+mean(residvec^2)
+
+tot_comb<-n*parasims*predsims
 count/tot_comb #amount of y_pred_n+1 above each observed y_i up to n
 seq(from=1/(m+1), to=m/(m+1), by=1/(m+1)) #Expected under t dist
 
@@ -362,12 +364,16 @@ effectiveSize(diagnostic_obj_5)
 
 plot(diagnostic_obj_5)
 
-#Visualizing betas
+#Visualizing betas for our prior
 n <- 100000
 d <- 3
 muvec<-rep(0,d)
 sigmavec<-rep(1,d)
 corrs <- corr_from_pcor(n,d)
+
+corrs <- replicate(100000,{
+  rcorrmatrix(3)[lower.tri(diag(1,nrow=3,ncol=3))==TRUE]
+})
 
 par_mat <- cbind(matrix(muvec, nrow=n, ncol=d), matrix(sigmavec, nrow=n, ncol=d), t(corrs))
 
