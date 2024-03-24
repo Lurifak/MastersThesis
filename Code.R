@@ -97,7 +97,7 @@ metrop_samp <- function(n, m, para_len, Data_mat, mcmcsamps, target_dens, burn=5
         D_S_inv <- solve(diag(sqrt(diag(S_inv))))
         corrmat <- (D_S_inv %*% S_inv %*% D_S_inv)
         Sigma <- diag(sigmas) %*% corrmat %*% diag(sigmas)
-        mu[j,] <- rmvnorm(1, mean=(sqrt(n)*colMeans(block)), sigma=Sigma) / sqrt(n)
+        mu[j,] <- rmvnorm(1, mean=(colMeans(block)), sigma = (1/n *Sigma))
       }
       paramat[(1 + (i-1)*mcmcsamps):(i*mcmcsamps),] <- cbind(mu, sigma_pcor)
     }, error=function(e){})
@@ -239,9 +239,9 @@ mean(ifelse(b[,2]>sorted2[4], 1, 0))
 
 
 #Sample rho and other parameters
-n<-1000
+n<-100000
 
-rho<-runif(n, -0.995, 0.995)
+rho<-runif(n, -0.99, 0.99)
 
 hist(rho)
 
@@ -253,7 +253,7 @@ sigma_2 <- 1
 #Sampling data
 
 meanvec<-c(mu_1, mu_2)
-m <- 100
+m <- 5
 holdout <- 2
 y<-c()
 x<-c()
@@ -276,8 +276,8 @@ count <- rep(0, m)
 
 it<-floor(n/m)
 
-parasims <- 10
-predsims <- 10
+parasims <- 1
+predsims <- 100
 
 residvec <- rep(NA, n*holdout)
 
@@ -338,7 +338,7 @@ init_3 <- c(sqrt(diag(covmat)), pcorrmat[lower.tri(pcorrmat)==TRUE])
 
 diagnostic_obj_3 <- MCMCmetrop1R(improved_target_dens, theta.init=init_3, 
                                  burnin = 1, x=data_3, 
-                                 mcmc=200000)
+                                 mcmc=100000)
 
 effectiveSize(diagnostic_obj_3)
 
@@ -395,7 +395,7 @@ rm(list = setdiff(ls(), lsf.str()))
 set.seed(1)
 
 #1: Sample priors
-n <- 1000 #samples
+n <- 100 #samples
 d <- 3 #dimension
 
 muvec<-rep(0,d)
@@ -459,12 +459,12 @@ for(i in 1:(mcmcsamps*n)){
 countmat<-matrix(0, nrow=m, ncol=d)
 
 for(i in 1:n){
-  obs<-Data_mat[(((i-1)*m)+1):(i*m),] #block of data from step 2
+  obs <- Data_mat[(((i-1)*m)+1):(i*m),] #block of data from step 2
   for(j in 1:d){
-    orderstat<-sort(obs[,j], decreasing=TRUE) #empirical order statistics for jth dimension
+    orderstat <- sort(obs[,j], decreasing=TRUE) #empirical order statistics for jth dimension
     for(k in 1:m){
-      datablock<-predsamps[((i-1)*mcmcsamps + 1): (i*mcmcsamps),j]
-      countmat[k,j]<- countmat[k,j] + sum(ifelse(datablock<orderstat[k], 1, 0)) #add count of simulations above observed value
+      datablock <- predsamps[((i-1)*mcmcsamps + 1): (i*mcmcsamps),j]
+      countmat[k,j] <- countmat[k,j] + sum(ifelse(datablock<orderstat[k], 1, 0)) #add count of simulations above observed value
     }
   }
 }
@@ -484,17 +484,17 @@ rm(list = setdiff(ls(), lsf.str())) #removes all variables except functions
 set.seed(4)
 
 #1.1.1: Sample n priors
-n<-10000
+n<-5
 d<-3 #dimension
 
-muvec<-rep(0,d)
-sigmavec<-rep(1,d)
+muvec<-c(2,0,0)
+sigmavec<-c(3,1,1)
 
 corrs <- corr_from_pcor(n,d)
 
 #1.1.2 Sample Data given priors
 
-m <- 520 #how many datapoints per iteration.
+m <- 100020 #how many datapoints per iteration.
 holdout <- 20
 #We use m-holdout observations to fit the model and then compare
 #sample from predicted (from model) with remaining observations
