@@ -6,7 +6,8 @@ library(monomvn)
 library(coda)
 library(ggplot2)
 library(ggalt)
-
+library(latex2exp)
+library(gridExtra)
 
 improved_target_dens<-function(theta,x){
   L <- length(theta)
@@ -31,8 +32,7 @@ improved_target_dens<-function(theta,x){
 }
 
 betafrommvn <- function(PMat, d){ #PMAt = parameter matrix, d = dim of mvn vector
-  #Assumed input: mu_s, sigmas and corrs
-  #d assumed defined as global variable
+  #Assumed rows in PMat: mu_s, sigmas and corrs
   n <- nrow(PMat)
   len <- ncol(PMat)
   betas <- matrix(NA, nrow=n, ncol=d)
@@ -46,7 +46,7 @@ betafrommvn <- function(PMat, d){ #PMAt = parameter matrix, d = dim of mvn vecto
     
     Sigma_12 <- Sigma[1, 2:d]
     Sigma_22_inv <- solve(Sigma[2:d, 2:d])
-    betas[i,2:d] <- Sigma_12 %*% Sigma_22_inv #"slopes"
+    betas[i,2:d] <- Sigma_12 %*% Sigma_22_inv #slopes
     betas[i,1] <- theta[1] - betas[i,2:d] %*% theta[2:d] #intercept
   }
   betas
@@ -83,19 +83,17 @@ metrop_samp <- function(n, m, para_len, Data_mat, mcmcsamps, target_dens, burn=5
     pcorrmat <- cor2pcor(cov2cor(covmat))
     init <- c(sqrt(diag(covmat)), pcorrmat[lower.tri(pcorrmat)==TRUE])
     
+    #For estimated correlations almost on edge of parameter space it can crash - thus skip these
     tryCatch({
       sigma_pcor <- MCMCmetrop1R(improved_target_dens, theta.init=init, burnin = burn, x=block, mcmc=mcmcsamps)
       mu <- matrix(NA, nrow=mcmcsamps, ncol=d)
       for(j in 1:mcmcsamps){
         parcorrs <- sigma_pcor[j,(d+1):ncol(sigma_pcor)]
         sigmas<-sigma_pcor[j,1:d]
-        parcorrmat <- diag(-1, nrow=d)
+        parcorrmat <- diag(1, nrow=d) #pcor2cor assumes positive unit diagonal from partial correlation matrix
         parcorrmat[lower.tri(parcorrmat)==TRUE] <- parcorrs
         parcorrmat <- parcorrmat + t(parcorrmat) - diag(diag(parcorrmat))
-        S <- - parcorrmat
-        S_inv <- solve(S)
-        D_S_inv <- solve(diag(sqrt(diag(S_inv))))
-        corrmat <- (D_S_inv %*% S_inv %*% D_S_inv)
+        corrmat <- pcor2cor(parcorrmat)
         Sigma <- diag(sigmas) %*% corrmat %*% diag(sigmas)
         mu[j,] <- rmvnorm(1, mean=(colMeans(block)), sigma = (1/n *Sigma))
       }
@@ -274,10 +272,8 @@ z <- cbind(y, x)
 
 count <- rep(0, m)
 
-it<-floor(n/m)
-
-parasims <- 1
-predsims <- 100
+parasims <- 20
+predsims <- 10
 
 residvec <- rep(NA, n*holdout)
 
@@ -335,6 +331,7 @@ data_3 <- rmvnorm(4, mean=rep(0,3), sigma=diag(rep(1,3)))
 covmat <- cov(data_3)
 pcorrmat <- cor2pcor(cov2cor(covmat))
 init_3 <- c(sqrt(diag(covmat)), pcorrmat[lower.tri(pcorrmat)==TRUE])
+init_3
 
 diagnostic_obj_3 <- MCMCmetrop1R(improved_target_dens, theta.init=init_3, 
                                  burnin = 1, x=data_3, 
@@ -365,28 +362,109 @@ effectiveSize(diagnostic_obj_5)
 plot(diagnostic_obj_5)
 
 #Visualizing betas for our prior
-n <- 100000
+
+#B_0 and B_1
+
+n <- 1000000
+
+rho <- runif(n, -1, 1)
+params_1 <- cbind(0, 1, 1, 1, rho) #mu_y, mu_x, s_y, s_x, rho
+params_2 <- cbind(1, 2, 1, 1, rho)
+params_3 <- cbind(1, 1, 2, 1, rho)
+params_4 <- cbind(1, 1, 2, 2, rho)
+
+prior_beta_1 <- betafrommvn(params_1,2)
+prior_beta_2 <- betafrommvn(params_2,2)
+prior_beta_3 <- betafrommvn(params_3,2)
+prior_beta_4 <- betafrommvn(params_4,2)
+
+colnames(prior_beta_1) <- c("Beta_0", "Beta_1")
+colnames(prior_beta_2) <- c("Beta_0", "Beta_1")
+colnames(prior_beta_3) <- c("Beta_0", "Beta_1")
+colnames(prior_beta_4) <- c("Beta_0", "Beta_1")
+
+plt_1 <-  ggplot(data = prior_beta_1, mapping = aes(x = Beta_0, y = Beta_1)) +
+  xlim(-6, 6) + ylim(-6,6) + xlab(TeX(r"($\Beta_0)")) + ylab(TeX(r"($\Beta_1)")) +
+  geom_hex(bins=150) + scale_fill_continuous(type = "viridis")
+
+plt_2 <-  ggplot(data = prior_beta_2, mapping = aes(x = Beta_0, y = Beta_1)) +
+  xlim(-6, 6) + ylim(-6,6) + xlab(TeX(r"($\Beta_0)")) + ylab(TeX(r"($\Beta_1)")) +
+  geom_hex(bins=150) + scale_fill_continuous(type = "viridis")
+
+plt_3 <-  ggplot(data = prior_betas_111, mapping = aes(x = Beta_1, y = Beta_2)) +
+  xlim(-6, 6) + ylim(-6,6) + xlab(TeX(r"($\Beta_1)")) + ylab(TeX(r"($\Beta_2)")) +
+  geom_hex(bins=150) + scale_fill_continuous(type = "viridis")
+
+
+
+
+#B_1 and B_2
+
+n <- 1000000
 d <- 3
 muvec<-rep(0,d)
-sigmavec<-rep(1,d)
+sigmavec<-c(1,1,1)
 corrs <- corr_from_pcor(n,d)
 
-corrs <- replicate(100000,{
-  rcorrmatrix(3)[lower.tri(diag(1,nrow=3,ncol=3))==TRUE]
-})
-
-par_mat <- cbind(matrix(muvec, nrow=n, ncol=d), matrix(sigmavec, nrow=n, ncol=d), t(corrs))
-
-prior_betas <- betafrommvn(par_mat, d)
-colnames(prior_betas) <- c("Beta_0", "Beta_1", "Beta_2")
-prior_betas
+par_mat_111 <- cbind(matrix(muvec, nrow=n, ncol=d), matrix(c(1,1,1), nrow=n, ncol=d), t(corrs))
+par_mat_122 <- cbind(matrix(muvec, nrow=n, ncol=d), matrix(c(1,2,2), nrow=n, ncol=d), t(corrs))
+par_mat_131 <- cbind(matrix(muvec, nrow=n, ncol=d), matrix(c(1,3,1), nrow=n, ncol=d), t(corrs))
+par_mat_311 <- cbind(matrix(muvec, nrow=n, ncol=d), matrix(c(3,1,1), nrow=n, ncol=d), t(corrs))
 
 
-m <- ggplot(data = prior_betas, mapping = aes(x = Beta_1, y = Beta_2)) + 
-     geom_point() + xlim(-7.5, 7.5) + ylim(-7.5,7.5)
-  
+prior_betas_111 <- betafrommvn(par_mat_111, d)
+prior_betas_122 <- betafrommvn(par_mat_122, d)
+prior_betas_131 <- betafrommvn(par_mat_131, d)
+prior_betas_311 <- betafrommvn(par_mat_311, d)
 
-m + geom_density_2d()
+colnames(prior_betas_111) <- c("Beta_0", "Beta_1", "Beta_2")
+colnames(prior_betas_122) <- c("Beta_0", "Beta_1", "Beta_2")
+colnames(prior_betas_131) <- c("Beta_0", "Beta_1", "Beta_2")
+colnames(prior_betas_311) <- c("Beta_0", "Beta_1", "Beta_2")
+
+
+
+plt_111 <-  ggplot(data = prior_betas_111, mapping = aes(x = Beta_1, y = Beta_2)) +
+  xlim(-6, 6) + ylim(-6,6) + xlab(TeX(r"($\Beta_1)")) + ylab(TeX(r"($\Beta_2)")) +
+  geom_hex(bins=150) + scale_fill_continuous(type = "viridis")
+
+plt_122 <-  ggplot(data = prior_betas_122, mapping = aes(x = Beta_1, y = Beta_2)) +
+  xlim(-6, 6) + ylim(-6,6) + xlab(TeX(r"($\Beta_1)")) + ylab(TeX(r"($\Beta_2)")) +
+  geom_hex(bins=150) + scale_fill_continuous(type = "viridis")
+
+plt_131 <- ggplot(data = prior_betas_131, mapping = aes(x = Beta_1, y = Beta_2)) +
+  xlim(-6, 6) + ylim(-6,6) + xlab(TeX(r"($\Beta_1)")) + ylab(TeX(r"($\Beta_2)")) +
+  geom_hex(bins=150) + scale_fill_continuous(type = "viridis")
+
+plt_311 <- ggplot(data = prior_betas_311, mapping = aes(x = Beta_1, y = Beta_2)) +
+  xlim(-6, 6) + ylim(-6,6) + xlab(TeX(r"($\Beta_1)")) + ylab(TeX(r"($\Beta_2)")) +
+  geom_hex(bins=150) + scale_fill_continuous(type = "viridis")
+
+
+grid.arrange(plt_111, plt_122, plt_131, plt_311, ncol=2, nrow=2)
+
+plt_111_dens <-  ggplot(data = prior_betas_111, mapping = aes(x = Beta_1, y = Beta_2)) +
+  xlim(-4, 4) + ylim(-4,4) + xlab(TeX(r"($\Beta_1)")) + ylab(TeX(r"($\Beta_2)")) +
+  stat_density_2d(geom = "raster",aes(fill = after_stat(density)),contour = FALSE) + 
+  scale_fill_viridis_c(option="turbo")
+
+plt_122_dens <-  ggplot(data = prior_betas_122, mapping = aes(x = Beta_1, y = Beta_2)) +
+  xlim(-4, 4) + ylim(-4,4) + xlab(TeX(r"($\Beta_1)")) + ylab(TeX(r"($\Beta_2)")) +
+  stat_density_2d(geom = "raster",aes(fill = after_stat(density)),contour = FALSE) + 
+  scale_fill_viridis_c(option="turbo")
+
+plt_131_dens <-  ggplot(data = prior_betas_131, mapping = aes(x = Beta_1, y = Beta_2)) +
+  xlim(-4, 4) + ylim(-4,4) + xlab(TeX(r"($\Beta_1)")) + ylab(TeX(r"($\Beta_2)")) +
+  stat_density_2d(geom = "raster",aes(fill = after_stat(density)),contour = FALSE) + 
+  scale_fill_viridis_c(option="turbo")
+
+plt_311_dens <-  ggplot(data = prior_betas_311, mapping = aes(x = Beta_1, y = Beta_2)) +
+  xlim(-4, 4) + ylim(-4,4) + xlab(TeX(r"($\Beta_1)")) + ylab(TeX(r"($\Beta_2)")) +
+  stat_density_2d(geom = "raster",aes(fill = after_stat(density)),contour = FALSE) + 
+  scale_fill_viridis_c(option="turbo")
+
+grid.arrange(plt_111_dens, plt_122_dens, plt_131_dens, plt_311_dens, ncol=2, nrow=2)
+
 
 #General check of predictive distribution for >= 3 dimensions
 
@@ -395,7 +473,7 @@ rm(list = setdiff(ls(), lsf.str()))
 set.seed(1)
 
 #1: Sample priors
-n <- 100 #samples
+n <- 5 #samples
 d <- 3 #dimension
 
 muvec<-rep(0,d)
@@ -424,7 +502,7 @@ for(i in 1:n){
 
 init <- c(rep(1,d), rep(0, d*(d-1)/2))
 para_len <- length(init) + d
-mcmcsamps <- 3000
+mcmcsamps <- 50000
 
 paramat_pcor <- metrop_samp(n, m, para_len, Data_mat, mcmcsamps, improved_target_dens, 
                             burn=500)
@@ -484,17 +562,17 @@ rm(list = setdiff(ls(), lsf.str())) #removes all variables except functions
 set.seed(4)
 
 #1.1.1: Sample n priors
-n<-5
+n<-1000
 d<-3 #dimension
 
-muvec<-c(2,0,0)
-sigmavec<-c(3,1,1)
+muvec<-rep(0,d)
+sigmavec<-rep(1,d)
 
 corrs <- corr_from_pcor(n,d)
 
 #1.1.2 Sample Data given priors
 
-m <- 100020 #how many datapoints per iteration.
+m <- 30 #how many datapoints per iteration.
 holdout <- 20
 #We use m-holdout observations to fit the model and then compare
 #sample from predicted (from model) with remaining observations
@@ -511,7 +589,7 @@ for(i in 1:n){
 }
 
 #Standardizing (x_1, ..., x_p)
-for(i in 2:d){
+for(i in 1:d){
   Data_mat[,i] <- (Data_mat[,i] - mean(Data_mat[,i]))/sd(Data_mat[,i])
 }
 
