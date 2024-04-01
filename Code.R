@@ -272,7 +272,7 @@ z <- cbind(y, x)
 
 count <- rep(0, m)
 
-parasims <- 20
+parasims <- 40
 predsims <- 10
 
 residvec <- rep(NA, n*holdout)
@@ -322,19 +322,141 @@ hist(paramat[,3], main="sigma_1", breaks=30, xlim=c(0,10))
 hist(paramat[,4], main="sigma_2", breaks=30, xlim=c(0,10))
 hist(paramat[,5], main="rho")
 
-# Diagnostics (compute ESS, trace plots, etc... for different blocks)
 
-#trace plots not convincing for correlations with m=d, crashes sometimes
+#############################################################################################
+### Diagnostics (compute ESS, trace plots, etc... to determine tuning, burnin)
+#############################################################################################
 
-data_3 <- rmvnorm(4, mean=rep(0,3), sigma=diag(rep(1,3)))
 
-covmat <- cov(data_3)
+# First we determine tuning parameter 'tune' in mcmcmetrop1r
+
+# We have 2 steps: first determine norm of tuning vector, 
+# then determine weight between marginal variances and p. correlations
+# measured by how well our ESS is
+
+# 1: Pregenerating data from correlations near edge of parameter space
+# i.e. partial corrs will also lie close to parameter space
+
+
+
+rm(list = setdiff(ls(), lsf.str()))
+
+set.seed(1)
+
+
+samp_corrs <- corr_from_pcor(5000, 3)
+
+# 1.1 pick out m observations close to parameter edge
+
+d <- 3
+j <- 0
+i <- 0
+m <- 10
+par_list <- list()
+while((j<m) & (i<5000)){
+  i <- i + 1
+  corrmat <- diag(1, nrow=d)
+  corrmat[lower.tri(corrmat)==TRUE] <- samp_corrs[,i]
+  corrmat <- corrmat + t(corrmat) - diag(diag(corrmat))
+  if((any(abs(eigen(corrmat)$values) < 10^(-1))) & (any(abs(eigen(corrmat)$values) > 10^(-2)))){
+    par_list[[j+1]] <- corrmat
+    j <- j+1
+  }
+}
+
+par_list #all correlations near edge of parameter space
+
+n_obs <- 4
+
+data_list <- list()
+for(i in 1:m){
+  data_list[[i]] <- rmvnorm(n_obs,mean=rep(0,d), sigma=par_list[[i]])
+}
+
+# 1.2 checking best absolute tune param size
+
+tot_ESS <- matrix(0, nrow=m, ncol=2*d)
+n_tune_vec <- 10
+
+for(i in 1:n_tune_vec){
+  tune_vec <- i/2  #1/2, 1, 3/2, ... for each tuning param
+  for(j in 1:m){
+    #Determining initialization cheaply
+    covmat <- cov(data_list[[j]])
+    pcorrmat <- cor2pcor(cov2cor(covmat))
+    init <- c(sqrt(diag(covmat)), pcorrmat[lower.tri(pcorrmat)==TRUE])
+    
+    tryCatch({
+      chain <- MCMCmetrop1R(improved_target_dens, theta.init=init, 
+                          burnin = 500, x=data_list[[j]],tune=tune_vec, mcmc=3000)
+    
+      tot_ESS[i,] <- tot_ESS[i,] + effectiveSize(chain)
+    }, error=function(e){})
+  }
+}
+
+tot_ESS
+rowMeans(tot_ESS)
+
+#Checking increasing tuning parameter for marginal variances
+
+tot_ESS <- matrix(0, nrow=n_tune_vec, ncol=2*d)
+
+for(i in 1:n_tune_vec){
+  tune_vec <- c(rep(1, d)*i/2, rep(1,d))
+  for(j in 1:m){
+    #Determining initialization cheaply
+    covmat <- cov(data_list[[j]])
+    pcorrmat <- cor2pcor(cov2cor(covmat))
+    init <- c(sqrt(diag(covmat)), pcorrmat[lower.tri(pcorrmat)==TRUE])
+    
+    tryCatch({
+      chain <- MCMCmetrop1R(improved_target_dens, theta.init=init, 
+                            burnin = 500, x=data_list[[j]], tune=tune_vec, mcmc=2000)
+      
+      tot_ESS[i,] <- tot_ESS[i,] + effectiveSize(chain)
+    }, error=function(e){})
+  }
+}
+
+tot_ESS
+rowMeans(tot_ESS) #tuning params for sigmas = 1 best
+
+#Checking tuning parameter for partial correlations
+
+tot_ESS <- matrix(0, nrow=n_tune_vec, ncol=2*d)
+
+for(i in 1:n_tune_vec){
+  tune_vec <- c(rep(1, d), rep(1,d)*(i))
+  for(j in 1:m){
+    #Determining initialization cheaply
+    covmat <- cov(data_list[[j]])
+    pcorrmat <- cor2pcor(cov2cor(covmat))
+    init <- c(sqrt(diag(covmat)), pcorrmat[lower.tri(pcorrmat)==TRUE])
+    
+    tryCatch({
+      chain <- MCMCmetrop1R(improved_target_dens, theta.init=init, 
+                            burnin = 500, x=data_list[[j]],tune=tune_vec, mcmc=3000)
+      
+      tot_ESS[i,] <- tot_ESS[i,] + effectiveSize(chain)
+    }, error=function(e){})
+  }
+}
+
+tot_ESS
+rowMeans(tot_ESS)
+
+
+
+
+#calculating intialization
+covmat <- cov(examp_data)
 pcorrmat <- cor2pcor(cov2cor(covmat))
 init_3 <- c(sqrt(diag(covmat)), pcorrmat[lower.tri(pcorrmat)==TRUE])
 init_3
 
 diagnostic_obj_3 <- MCMCmetrop1R(improved_target_dens, theta.init=init_3, 
-                                 burnin = 1, x=data_3, 
+                                 burnin = 1, x=data_3,tune=c(1,1,1,12,12,12), 
                                  mcmc=100000)
 
 effectiveSize(diagnostic_obj_3)
