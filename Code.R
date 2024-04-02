@@ -9,7 +9,7 @@ library(ggalt)
 library(latex2exp)
 library(gridExtra)
 
-tune_adjust<-function(a_prob, dim){
+tune_adjust<-function(a_prob){
   if(a_prob>0.25){
     4*(a_prob-0.25) + 1
   }
@@ -82,6 +82,8 @@ metrop_samp <- function(n, m, para_len, Data_mat, mcmcsamps, target_dens, burn=5
   if(holdout==0){t <- m} #use all data to sample from posterior (do not withhold observations)
   else{t <- m - holdout} #do not use number of holdout observations
   
+  pattern <- "[0-9]+\\.?[0-9]*" #for extracting acceptance prob
+  
   for(i in 1:n){
     block <- Data_mat[((i-1)*m+1):(i*t),]
     
@@ -92,7 +94,24 @@ metrop_samp <- function(n, m, para_len, Data_mat, mcmcsamps, target_dens, burn=5
     
     #For estimated correlations almost on edge of parameter space it can crash - thus skip these
     tryCatch({
-      sigma_pcor <- MCMCmetrop1R(improved_target_dens, theta.init=init, burnin = burn, x=block, mcmc=mcmcsamps)
+      
+      sink(file="test.txt")
+      
+      testchain <- MCMCmetrop1R(improved_target_dens, theta.init=init, burnin = 500, x=block, mcmc=200)
+      
+      sink()
+      
+      out <- readLines("test.txt")
+      
+      acc_prob <- regmatches(out, regexpr(pattern, out))
+      
+      acc_prob <- as.numeric(acc_prob)
+      
+      tuning <- tune_adjust(acc_prob)
+      
+      sigma_pcor <- MCMCmetrop1R(improved_target_dens, theta.init=init, 
+                                 burnin = burn, x=block, mcmc=mcmcsamps, tune=tuning)
+      
       mu <- matrix(NA, nrow=mcmcsamps, ncol=d)
       for(j in 1:mcmcsamps){
         parcorrs <- sigma_pcor[j,(d+1):ncol(sigma_pcor)]
@@ -501,9 +520,26 @@ pcorrmat <- cor2pcor(cov2cor(covmat))
 init_3 <- c(sqrt(diag(covmat)), pcorrmat[lower.tri(pcorrmat)==TRUE])
 init_3
 
+
+
 diagnostic_obj_3 <- MCMCmetrop1R(improved_target_dens, theta.init=init_3, 
                                  burnin = 1, x=examp_data,#tune=c(1,1,1,12,12,12), 
-                                 mcmc=100000)
+                                 mcmc=1700)
+
+sink(file="test.txt")
+
+sink()
+
+out <- readLines("test.txt")
+
+# Extract the number using regex
+numbers <- regmatches(out, regexpr(pattern, out))
+
+# Convert the extracted number to numeric
+numbers <- as.numeric(numbers)
+
+# Print the extracted number
+print(numbers)
 
 effectiveSize(diagnostic_obj_3)
 
@@ -697,7 +733,7 @@ for(i in 1:n){
 
 init <- c(rep(1,d), rep(0, d*(d-1)/2))
 para_len <- length(init) + d
-mcmcsamps <- 50000
+mcmcsamps <- 3000
 
 paramat_pcor <- metrop_samp(n, m, para_len, Data_mat, mcmcsamps, improved_target_dens, 
                             burn=500)
