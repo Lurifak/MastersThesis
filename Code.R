@@ -553,15 +553,22 @@ cov2cor(covmat)
 init_3 <- c(sqrt(diag(covmat)), pcorrmat[lower.tri(pcorrmat)==TRUE])
 init_3
 
-diagnostic_obj_3 <- MCMCmetrop1R(improved_target_dens, theta.init=init_3, 
-                                 burnin = 500, x=examp_data, tune=1, 
-                                 mcmc=3000)
+
+for(i in 1:100){
+  diagnostic_obj_3 <- MCMCmetrop1R(improved_target_dens, theta.init=init_3, 
+                                 burnin = 500, seed=i,x=examp_data, tune=1, 
+                                 mcmc=200)
+}
+
+ø <- MCMCmetrop1R(improved_target_dens, theta.init=init_3, 
+             burnin = 500, seed=6,x=examp_data, tune=1, 
+             mcmc=10000)
 
 a <- effectiveSize(diagnostic_obj_3)
 a
 
 diagnostic_obj <- MCMCmetrop1R(improved_target_dens, theta.init=init_3, 
-                                 burnin = 500, x=examp_data, tune=0.48/0.25, 
+                                 burnin = 500, x=examp_data, tune=0.32/0.25, 
                                  mcmc=3000)
 
 b <- effectiveSize(diagnostic_obj)
@@ -639,18 +646,18 @@ corrs <- corr_from_pcor(n,d)
 
 par_mat_111 <- cbind(matrix(muvec, nrow=n, ncol=d), matrix(c(1,1,1), nrow=n, ncol=d), t(corrs))
 par_mat_122 <- cbind(matrix(muvec, nrow=n, ncol=d), matrix(c(1,2,2), nrow=n, ncol=d), t(corrs))
-par_mat_131 <- cbind(matrix(muvec, nrow=n, ncol=d), matrix(c(1,3,1), nrow=n, ncol=d), t(corrs))
+par_mat_123 <- cbind(matrix(muvec, nrow=n, ncol=d), matrix(c(1,2,3), nrow=n, ncol=d), t(corrs))
 par_mat_311 <- cbind(matrix(muvec, nrow=n, ncol=d), matrix(c(3,1,1), nrow=n, ncol=d), t(corrs))
 
 
 prior_betas_111 <- betafrommvn(par_mat_111, d)
 prior_betas_122 <- betafrommvn(par_mat_122, d)
-prior_betas_131 <- betafrommvn(par_mat_131, d)
+prior_betas_123 <- betafrommvn(par_mat_123, d)
 prior_betas_311 <- betafrommvn(par_mat_311, d)
 
 colnames(prior_betas_111) <- c("Beta_0", "Beta_1", "Beta_2")
 colnames(prior_betas_122) <- c("Beta_0", "Beta_1", "Beta_2")
-colnames(prior_betas_131) <- c("Beta_0", "Beta_1", "Beta_2")
+colnames(prior_betas_123) <- c("Beta_0", "Beta_1", "Beta_2")
 colnames(prior_betas_311) <- c("Beta_0", "Beta_1", "Beta_2")
 
 
@@ -663,7 +670,7 @@ plt_122 <-  ggplot(data = prior_betas_122, mapping = aes(x = Beta_1, y = Beta_2)
   xlim(-6, 6) + ylim(-6,6) + xlab(TeX(r"($\Beta_1)")) + ylab(TeX(r"($\Beta_2)")) +
   geom_hex(bins=150) + scale_fill_continuous(type = "viridis")
 
-plt_131 <- ggplot(data = prior_betas_131, mapping = aes(x = Beta_1, y = Beta_2)) +
+plt_123 <- ggplot(data = prior_betas_123, mapping = aes(x = Beta_1, y = Beta_2)) +
   xlim(-6, 6) + ylim(-6,6) + xlab(TeX(r"($\Beta_1)")) + ylab(TeX(r"($\Beta_2)")) +
   geom_hex(bins=150) + scale_fill_continuous(type = "viridis")
 
@@ -672,7 +679,7 @@ plt_311 <- ggplot(data = prior_betas_311, mapping = aes(x = Beta_1, y = Beta_2))
   geom_hex(bins=150) + scale_fill_continuous(type = "viridis")
 
 
-grid.arrange(plt_111, plt_122, plt_131, plt_311, ncol=2, nrow=2)
+grid.arrange(plt_111, plt_122, plt_123, plt_311, ncol=2, nrow=2)
 
 plt_111_dens <-  ggplot(data = prior_betas_111, mapping = aes(x = Beta_1, y = Beta_2)) +
   xlim(-4, 4) + ylim(-4,4) + xlab(TeX(r"($\Beta_1)")) + ylab(TeX(r"($\Beta_2)")) +
@@ -684,7 +691,7 @@ plt_122_dens <-  ggplot(data = prior_betas_122, mapping = aes(x = Beta_1, y = Be
   stat_density_2d(geom = "raster",aes(fill = after_stat(density)),contour = FALSE) + 
   scale_fill_viridis_c(option="turbo")
 
-plt_131_dens <-  ggplot(data = prior_betas_131, mapping = aes(x = Beta_1, y = Beta_2)) +
+plt_123_dens <-  ggplot(data = prior_betas_123, mapping = aes(x = Beta_1, y = Beta_2)) +
   xlim(-4, 4) + ylim(-4,4) + xlab(TeX(r"($\Beta_1)")) + ylab(TeX(r"($\Beta_2)")) +
   stat_density_2d(geom = "raster",aes(fill = after_stat(density)),contour = FALSE) + 
   scale_fill_viridis_c(option="turbo")
@@ -694,7 +701,7 @@ plt_311_dens <-  ggplot(data = prior_betas_311, mapping = aes(x = Beta_1, y = Be
   stat_density_2d(geom = "raster",aes(fill = after_stat(density)),contour = FALSE) + 
   scale_fill_viridis_c(option="turbo")
 
-grid.arrange(plt_111_dens, plt_122_dens, plt_131_dens, plt_311_dens, ncol=2, nrow=2)
+grid.arrange(plt_111_dens, plt_122_dens, plt_123_dens, plt_311_dens, ncol=2, nrow=2)
 
 
 #General check of predictive distribution for >= 3 dimensions
@@ -704,7 +711,7 @@ rm(list = setdiff(ls(), lsf.str()))
 set.seed(1)
 
 #1: Sample priors
-n <- 5 #samples
+n <- 10 #samples
 d <- 3 #dimension
 
 muvec<-rep(0,d)
@@ -733,7 +740,7 @@ for(i in 1:n){
 
 init <- c(rep(1,d), rep(0, d*(d-1)/2))
 para_len <- length(init) + d
-mcmcsamps <- 3000
+mcmcsamps <- 2000
 
 paramat_pcor <- metrop_samp(n, m, para_len, Data_mat, mcmcsamps, improved_target_dens, 
                             burn=500)
