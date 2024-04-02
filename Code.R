@@ -9,6 +9,13 @@ library(ggalt)
 library(latex2exp)
 library(gridExtra)
 
+tune_adjust<-function(a_prob, dim){
+  if(a_prob>0.25){
+    4*(a_prob-0.25) + 1
+  }
+  else{3 * (a_prob) +  1/4}
+}
+
 improved_target_dens<-function(theta,x){
   L <- length(theta)
   Samp_cov <- cov(x)
@@ -351,7 +358,7 @@ samp_corrs <- corr_from_pcor(5000, 3)
 d <- 3
 j <- 0
 i <- 0
-m <- 10
+m <- 20
 par_list <- list()
 while((j<m) & (i<5000)){
   i <- i + 1
@@ -375,8 +382,8 @@ for(i in 1:m){
 
 # 1.2 checking best absolute tune param size
 
-tot_ESS <- matrix(0, nrow=m, ncol=2*d)
-n_tune_vec <- 10
+n_tune_vec <- 4
+tot_ESS <- matrix(0, nrow=n_tune_vec, ncol=2*d)
 
 for(i in 1:n_tune_vec){
   tune_vec <- i/2  #1/2, 1, 3/2, ... for each tuning param
@@ -436,7 +443,7 @@ for(i in 1:n_tune_vec){
     
     tryCatch({
       chain <- MCMCmetrop1R(improved_target_dens, theta.init=init, 
-                            burnin = 500, x=data_list[[j]],tune=tune_vec, mcmc=3000)
+                            burnin = 1000, x=data_list[[j]],tune=tune_vec, mcmc=1000)
       
       tot_ESS[i,] <- tot_ESS[i,] + effectiveSize(chain)
     }, error=function(e){})
@@ -447,19 +454,85 @@ tot_ESS
 rowMeans(tot_ESS)
 
 
+#Testing adapting tuning by ESS
+tot_ESS_tune <- matrix(0, nrow=m, ncol=2*d)
+tot_ESS <- matrix(0, nrow=m, ncol=2*d)
+
+
+for(j in 1:m){
+  #Determining initialization cheaply
+  covmat <- cov(data_list[[j]])
+  pcorrmat <- cor2pcor(cov2cor(covmat))
+  init <- c(sqrt(diag(covmat)), pcorrmat[lower.tri(pcorrmat)==TRUE])
+    
+  tryCatch({
+    testchain <- MCMCmetrop1R(improved_target_dens, theta.init=init, 
+                              burnin = 500, x=data_list[[j]], mcmc=200)
+    
+    ess <- effectiveSize(testchain)
+    tot <- sum(ess)
+    tune_corrected <- c(rep(1,d) * sum(ess[1:d])/tot, rep(1,d) * sum(ess[(d+1):(2*d)])/tot)
+    
+    chain_tuned <- MCMCmetrop1R(improved_target_dens, theta.init=init,
+                                burnin = 500, x=data_list[[j]],tune=tune_corrected, mcmc=2000)
+    
+    chain <- MCMCmetrop1R(improved_target_dens, theta.init=init, 
+                            burnin = 500, x=data_list[[j]], mcmc=2000)
+      
+    tot_ESS_tune[j,] <- effectiveSize(chain_tuned)
+    tot_ESS[j,] <- effectiveSize(chain)
+    
+  }, error=function(e){})
+}
+
+tot_ESS_tune
+tot_ESS
+colMeans(tot_ESS_tune)
+colMeans(tot_ESS)
+
 
 
 #calculating intialization
+set.seed(3)
+examp_data <- rmvnorm(4, mean=rep(0,d), sigma = diag(1, nrow=3))
+
 covmat <- cov(examp_data)
 pcorrmat <- cor2pcor(cov2cor(covmat))
 init_3 <- c(sqrt(diag(covmat)), pcorrmat[lower.tri(pcorrmat)==TRUE])
 init_3
 
 diagnostic_obj_3 <- MCMCmetrop1R(improved_target_dens, theta.init=init_3, 
-                                 burnin = 1, x=data_3,tune=c(1,1,1,12,12,12), 
+                                 burnin = 1, x=examp_data,#tune=c(1,1,1,12,12,12), 
                                  mcmc=100000)
 
 effectiveSize(diagnostic_obj_3)
+
+set.seed(7)
+
+examp_data <- rmvnorm(4, mean=rep(0,d), sigma = par_list[[14]])
+
+covmat <- cov(examp_data)
+pcorrmat <- cor2pcor(cov2cor(covmat))
+cov2cor(covmat)
+init_3 <- c(sqrt(diag(covmat)), pcorrmat[lower.tri(pcorrmat)==TRUE])
+init_3
+
+diagnostic_obj_3 <- MCMCmetrop1R(improved_target_dens, theta.init=init_3, 
+                                 burnin = 500, x=examp_data, tune=1, 
+                                 mcmc=3000)
+
+a <- effectiveSize(diagnostic_obj_3)
+a
+
+diagnostic_obj <- MCMCmetrop1R(improved_target_dens, theta.init=init_3, 
+                                 burnin = 500, x=examp_data, tune=0.48/0.25, 
+                                 mcmc=3000)
+
+b <- effectiveSize(diagnostic_obj)
+b
+sum(a)
+sum(b)
+
 
 plot(diagnostic_obj_3) #trace plots convincing for m >= d + 1
 
