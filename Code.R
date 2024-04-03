@@ -10,9 +10,7 @@ library(latex2exp)
 library(gridExtra)
 
 tune_adjust<-function(a_prob){
-  if(a_prob>0.25){
-    4*(a_prob-0.25) + 1
-  }
+  if(a_prob>0.25){3*(a_prob-0.25) + 1}
   else{3 * (a_prob) +  1/4}
 }
 
@@ -84,6 +82,13 @@ metrop_samp <- function(n, m, para_len, Data_mat, mcmcsamps, target_dens, burn=5
   
   pattern <- "[0-9]+\\.?[0-9]*" #for extracting acceptance prob
   
+  tot_acc_pre <- 0 #for measuring total average acceptance rate
+  tot_acc_post <- 0
+  count_pre <- 0
+  count_post <- 0
+  
+  ESS_mat_holder <- matrix(0, nrow=n, ncol=((d) + (d)*(d-1)/2))
+  
   for(i in 1:n){
     block <- Data_mat[((i-1)*m+1):(i*t),]
     
@@ -93,30 +98,94 @@ metrop_samp <- function(n, m, para_len, Data_mat, mcmcsamps, target_dens, burn=5
     init <- c(sqrt(diag(covmat)), pcorrmat[lower.tri(pcorrmat)==TRUE])
     
     #For estimated correlations almost on edge of parameter space it can crash - thus skip these
+    
+    tuning <- 1
+    acc_prob_pre <- 0
+    ess_test <- rep(1, (d) + (d)*(d-1)/2)
+    
+    #test-chain
+    
     tryCatch({
       
       sink(file="test.txt")
       
-      testchain <- MCMCmetrop1R(improved_target_dens, theta.init=init, burnin = 500, x=block, mcmc=200)
-      
-      sink()
+      testchain <- MCMCmetrop1R(improved_target_dens, theta.init=init, burnin = 500, x=block, mcmc=250)
       
       out <- readLines("test.txt")
       
-      acc_prob <- regmatches(out, regexpr(pattern, out))
+      acc_prob_pre <- regmatches(out, regexpr(pattern, out))
       
-      acc_prob <- as.numeric(acc_prob)
+      acc_prob_pre <- as.numeric(acc_prob_pre)
       
-      tuning <- tune_adjust(acc_prob)
+      tune_multiplier <- tune_adjust(acc_prob_pre)
+      
+      count_pre <- count_pre + 1
+      
+      ess_test <- effectiveSize(testchain)
+      
+      ess_inv <- 1/ess_test #if we have low ess for a parameter, we want high tune
+      
+      ess_inv_standardized <- ess_inv / sum(ess_inv)
+      
+      weight <- 0.2
+      
+      tune <- rep(1, d + (d)*(d-1)/2) + weight * ess_inv_standardized
+      
+      tuning_1 <- tune
+      
+    }, error=function(e){})
+      
+    sink()
+    
+    tryCatch({
+      
+      sink(file="test.txt")
+      
+      testchain <- MCMCmetrop1R(improved_target_dens, tune=tuning, 
+                                theta.init=init, burnin = 500, x=block, mcmc=250)
+      
+      out <- readLines("test.txt")
+      
+      acc_prob_pre <- regmatches(out, regexpr(pattern, out))
+      
+      acc_prob_pre <- as.numeric(acc_prob_pre)
+      
+      tune_multiplier <- tune_adjust(acc_prob_pre)
+      
+      tuning_2 <- tuning_1 * tune_multiplier
+      
+    }, error=function(e){})
+    
+    sink()
+    
+    
+    tryCatch({
+      
+      
+      sink(file="test.txt")
       
       sigma_pcor <- MCMCmetrop1R(improved_target_dens, theta.init=init, 
-                                 burnin = burn, x=block, mcmc=mcmcsamps, tune=tuning)
+                                 burnin = burn, x=block, mcmc=mcmcsamps, tune=tuning_2)
+      
+      out <- readLines("test.txt")
+      
+      acc_prob_post <- regmatches(out, regexpr(pattern, out))
+      
+      acc_prob_post <- as.numeric(acc_prob_post)
+      
+      tot_acc_pre <- tot_acc_pre + acc_prob_pre
+      
+      tot_acc_post <- tot_acc_post + acc_prob_post
+      
+      count_post <- count_post + 1
+      
+      ESS_mat_holder[i, ] <- effectiveSize(sigma_pcor)
       
       mu <- matrix(NA, nrow=mcmcsamps, ncol=d)
       for(j in 1:mcmcsamps){
         parcorrs <- sigma_pcor[j,(d+1):ncol(sigma_pcor)]
         sigmas<-sigma_pcor[j,1:d]
-        parcorrmat <- diag(1, nrow=d) #pcor2cor assumes positive unit diagonal from partial correlation matrix
+        parcorrmat <- diag(1, nrow=d) #pcor2cor assumes positive unit diagonal in partial correlation matrix
         parcorrmat[lower.tri(parcorrmat)==TRUE] <- parcorrs
         parcorrmat <- parcorrmat + t(parcorrmat) - diag(diag(parcorrmat))
         corrmat <- pcor2cor(parcorrmat)
@@ -125,7 +194,17 @@ metrop_samp <- function(n, m, para_len, Data_mat, mcmcsamps, target_dens, burn=5
       }
       paramat[(1 + (i-1)*mcmcsamps):(i*mcmcsamps),] <- cbind(mu, sigma_pcor)
     }, error=function(e){})
+    sink()
+    print("")
+    cat(count_post, "of", i, " runs accepted")
   }
+  
+  ESS_mat <<- ESS_mat_holder
+  
+  cat("Average acceptance pre tuning probability was ", tot_acc_pre/count_pre, " ")
+  cat("Average acceptance post tuning probability was ", tot_acc_post/count_post, " ")
+  cat("Count Pre/Post was ", count_pre, "", count_post)
+  
   return(paramat)
 }
 
@@ -708,10 +787,10 @@ grid.arrange(plt_111_dens, plt_122_dens, plt_123_dens, plt_311_dens, ncol=2, nro
 
 rm(list = setdiff(ls(), lsf.str()))
 
-set.seed(1)
+set.seed(2)
 
 #1: Sample priors
-n <- 10 #samples
+n <- 100 #samples
 d <- 3 #dimension
 
 muvec<-rep(0,d)
@@ -744,6 +823,11 @@ mcmcsamps <- 2000
 
 paramat_pcor <- metrop_samp(n, m, para_len, Data_mat, mcmcsamps, improved_target_dens, 
                             burn=500)
+
+ESS_mat
+ESS_mat_red <- matrix(ESS_mat[ESS_mat!=0], ncol=(para_len-d))
+a <- sum(ESS_mat_red)/(ncol(ESS_mat_red)*nrow(ESS_mat_red)) #average ESS per parameter
+a
 
 #4: simulate predictive samples given samples from posterior
 
@@ -788,7 +872,8 @@ for(i in 1:n){
 probmat<-countmat/(n*mcmcsamps)
 probmat
 
-rowMeans(probmat)
+testing <- rowMeans(probmat)
+testing
 
 #1: Comparison Bayesian Lasso and reparametrized model
 
@@ -1006,13 +1091,6 @@ par(mfrow=c(1,3))
 hist(ourmod_mvn[,7])
 hist(ourmod_mvn[,8])
 hist(ourmod_mvn[,9])
-
-# Estimation of intercept way less stable than in B. lasso (why?)
-# Have seen that it takes a lot of data to estimate correlation precisely 
-# (40000 samples to have less than 0.01 error in correlation)
-# If intercept calculation sensitive to small changes in 
-# correlation then maybe we have some explanation
-
 
 # Generating data from bayesian lasso and then comparing
 
