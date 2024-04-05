@@ -8,9 +8,10 @@ library(ggplot2)
 library(ggalt)
 library(latex2exp)
 library(gridExtra)
+library(rstan)
 
 tune_adjust<-function(a_prob){
-  if(a_prob>0.25){3*(a_prob-0.25) + 1}
+  if(a_prob>0.25){4*(a_prob-0.25) + 1}
   else{3 * (a_prob) +  1/4}
 }
 
@@ -78,7 +79,7 @@ corr_from_pcor<-function(n, d){
 metrop_samp <- function(n, m, para_len, Data_mat, mcmcsamps, target_dens, burn=500, holdout=0){
   paramat <- matrix(NA, nrow=n*mcmcsamps, ncol=para_len)
   if(holdout==0){t <- m} #use all data to sample from posterior (do not withhold observations)
-  else{t <- m - holdout} #do not use number of holdout observations
+  else{t <- m - holdout}
   
   pattern <- "[0-9]+\\.?[0-9]*" #for extracting acceptance prob
   
@@ -109,39 +110,7 @@ metrop_samp <- function(n, m, para_len, Data_mat, mcmcsamps, target_dens, burn=5
       
       sink(file="test.txt")
       
-      testchain <- MCMCmetrop1R(improved_target_dens, theta.init=init, burnin = 500, x=block, mcmc=250)
-      
-      out <- readLines("test.txt")
-      
-      acc_prob_pre <- regmatches(out, regexpr(pattern, out))
-      
-      acc_prob_pre <- as.numeric(acc_prob_pre)
-      
-      tune_multiplier <- tune_adjust(acc_prob_pre)
-      
-      count_pre <- count_pre + 1
-      
-      ess_test <- effectiveSize(testchain)
-      
-      ess_inv <- 1/ess_test #if we have low ess for a parameter, we want high tune
-      
-      ess_inv_standardized <- ess_inv / sum(ess_inv)
-      
-      weight <- 0.2
-      
-      tune <- rep(1, d + (d)*(d-1)/2) + weight * ess_inv_standardized
-      
-      tuning_1 <- tune
-      
-    }, error=function(e){})
-      
-    sink()
-    
-    tryCatch({
-      
-      sink(file="test.txt")
-      
-      testchain <- MCMCmetrop1R(improved_target_dens, tune=tuning, 
+      testchain <- MCMCmetrop1R(improved_target_dens, 
                                 theta.init=init, burnin = 500, x=block, mcmc=250)
       
       out <- readLines("test.txt")
@@ -150,9 +119,7 @@ metrop_samp <- function(n, m, para_len, Data_mat, mcmcsamps, target_dens, burn=5
       
       acc_prob_pre <- as.numeric(acc_prob_pre)
       
-      tune_multiplier <- tune_adjust(acc_prob_pre)
-      
-      tuning_2 <- tuning_1 * tune_multiplier
+      tuning <- tune_adjust(acc_prob_pre)
       
     }, error=function(e){})
     
@@ -161,11 +128,10 @@ metrop_samp <- function(n, m, para_len, Data_mat, mcmcsamps, target_dens, burn=5
     
     tryCatch({
       
-      
       sink(file="test.txt")
       
       sigma_pcor <- MCMCmetrop1R(improved_target_dens, theta.init=init, 
-                                 burnin = burn, x=block, mcmc=mcmcsamps, tune=tuning_2)
+                                 burnin = burn, x=block, mcmc=mcmcsamps, tune=tuning)
       
       out <- readLines("test.txt")
       
@@ -195,15 +161,14 @@ metrop_samp <- function(n, m, para_len, Data_mat, mcmcsamps, target_dens, burn=5
       paramat[(1 + (i-1)*mcmcsamps):(i*mcmcsamps),] <- cbind(mu, sigma_pcor)
     }, error=function(e){})
     sink()
-    print("")
-    cat(count_post, "of", i, " runs accepted")
+    cat(count_post, "of", i, " runs accepted\n")
   }
   
   ESS_mat <<- ESS_mat_holder
   
-  cat("Average acceptance pre tuning probability was ", tot_acc_pre/count_pre, " ")
-  cat("Average acceptance post tuning probability was ", tot_acc_post/count_post, " ")
-  cat("Count Pre/Post was ", count_pre, "", count_post)
+  cat("Average acceptance pre tuning probability was ", tot_acc_pre/count_pre, "\n")
+  cat("Average acceptance post tuning probability was ", tot_acc_post/count_post, "\n")
+  cat("Count Pre/Post was ", count_pre, "", count_post, "\n")
   
   return(paramat)
 }
@@ -820,12 +785,13 @@ for(i in 1:n){
 init <- c(rep(1,d), rep(0, d*(d-1)/2))
 para_len <- length(init) + d
 mcmcsamps <- 2000
-
 paramat_pcor <- metrop_samp(n, m, para_len, Data_mat, mcmcsamps, improved_target_dens, 
-                            burn=500)
+                            burn=1000)
 
-ESS_mat
+
 ESS_mat_red <- matrix(ESS_mat[ESS_mat!=0], ncol=(para_len-d))
+ESS_mat_red
+colMeans(ESS_mat_red)
 a <- sum(ESS_mat_red)/(ncol(ESS_mat_red)*nrow(ESS_mat_red)) #average ESS per parameter
 a
 
