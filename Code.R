@@ -8,7 +8,6 @@ library(ggplot2)
 library(ggalt)
 library(latex2exp)
 library(gridExtra)
-library(rstan)
 
 tune_adjust<-function(a_prob){
   if(a_prob>0.25){4*(a_prob-0.25) + 1}
@@ -85,7 +84,6 @@ metrop_samp <- function(n, m, para_len, Data_mat, mcmcsamps, target_dens, burn=5
   
   tot_acc_pre <- 0 #for measuring total average acceptance rate
   tot_acc_post <- 0
-  count_pre <- 0
   count_post <- 0
   
   ESS_mat_holder <- matrix(0, nrow=n, ncol=((d) + (d)*(d-1)/2))
@@ -166,9 +164,8 @@ metrop_samp <- function(n, m, para_len, Data_mat, mcmcsamps, target_dens, burn=5
   
   ESS_mat <<- ESS_mat_holder
   
-  cat("Average acceptance pre tuning probability was ", tot_acc_pre/count_pre, "\n")
   cat("Average acceptance post tuning probability was ", tot_acc_post/count_post, "\n")
-  cat("Count Pre/Post was ", count_pre, "", count_post, "\n")
+  cat("Count Post was ", count_post, "\n")
   
   return(paramat)
 }
@@ -822,24 +819,31 @@ for(i in 1:(mcmcsamps*n)){
 
 #5: Counting amount of times above observations
 
-countmat<-matrix(0, nrow=m, ncol=d)
 
+countmat <- matrix(0, (n*m), ncol=d)
 for(i in 1:n){
   obs <- Data_mat[(((i-1)*m)+1):(i*m),] #block of data from step 2
   for(j in 1:d){
     orderstat <- sort(obs[,j], decreasing=TRUE) #empirical order statistics for jth dimension
     for(k in 1:m){
       datablock <- predsamps[((i-1)*mcmcsamps + 1): (i*mcmcsamps),j]
-      countmat[k,j] <- countmat[k,j] + sum(ifelse(datablock<orderstat[k], 1, 0)) #add count of simulations above observed value
+      countmat[(i-1)*m + k,j] <- sum(ifelse(datablock<orderstat[k], 1, 0)) #add count of simulations above observed value
     }
   }
 }
 
-probmat<-countmat/(n*mcmcsamps)
-probmat
+side_by_side <- matrix(NA, nrow=m, ncol=(d*n))
+for(i in 1:m){
+  for(j in 1:n){
+    side_by_side[i,((j-1)*d+1):(j*d)] <- countmat[i + (j-1)*m,]
+  }
+}
 
-testing <- rowMeans(probmat)
-testing
+sd_est <- apply(side_by_side, 1, FUN=sd)
+sd_est/n
+
+
+rowMeans(side_by_side)/mcmcsamps
 
 #1: Comparison Bayesian Lasso and reparametrized model
 
@@ -848,10 +852,10 @@ testing
 
 rm(list = setdiff(ls(), lsf.str())) #removes all variables except functions
 
-set.seed(4)
+set.seed(2)
 
 #1.1.1: Sample n priors
-n<-1000
+n<-10
 d<-3 #dimension
 
 muvec<-rep(0,d)
@@ -890,8 +894,8 @@ for(i in 1:n){
 #1.1.3 posterior sampling
 
 para_len <- 2*d + (d*(d-1)/2)
-mcmcsamps <- 3000
-burnin_mcmc <- 500
+mcmcsamps <- 2000
+burnin_mcmc <- 1000
 
 paramat_pcor <- metrop_samp(n, m, para_len, Data_mat, mcmcsamps, 
                        improved_target_dens, burn=burnin_mcmc, holdout=holdout)
