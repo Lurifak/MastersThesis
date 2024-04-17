@@ -19,9 +19,10 @@ improved_target_dens<-function(theta,x){
   Samp_cov <- cov(x)
   n <- nrow(x)
   d <- ncol(x)
-  sigma <- theta[1:d]
+  sigma_sq <- theta[1:d]
+  sigma <- sqrt(sigma_sq)
   parcorrs <- theta[(d+1):L]
-  if(any(sigma<=0)){-Inf}
+  if(any(sigma_sq<=0)){-Inf}
   else{
     parcorrmat <- diag(-1, nrow=d)
     parcorrmat[lower.tri(parcorrmat)==TRUE] <- parcorrs
@@ -29,8 +30,8 @@ improved_target_dens<-function(theta,x){
     
     if ((sum(eigen(parcorrmat)$val<0)==d)){ # if partial corr mat is negative definite <=> corrmat positive def
       
-      Sigma_inv <- solve(diag(sigma) %*% pcor2cor(parcorrmat+diag(2, nrow=d)) %*% diag(sigma))
-      -((n-1)/2) * (log(1/det(Sigma_inv)) + sum(diag(Sigma_inv %*% Samp_cov))) - sum(log(sigma))
+      Sigma_inv <- solve(diag(sigma) %*% pcor2cor(parcorrmat+diag(2, nrow=d)) %*% diag(sigma)) #pcor2cor defines p. corr mat having unit diagonal instead of negative unit diag
+      -((n-1)/2) * (log(1/det(Sigma_inv)) + sum(diag(Sigma_inv %*% Samp_cov))) - sum(log(sigma_sq))
     }
     else{-Inf}
   }
@@ -117,7 +118,7 @@ metrop_samp <- function(n, m, para_len, Data_mat, mcmcsamps, target_dens, burn=5
       
       acc_prob_pre <- as.numeric(acc_prob_pre)
       
-      tuning <- tune_adjust(acc_prob_pre)
+      #tuning <- tune_adjust(acc_prob_pre)
       
     }, error=function(e){})
     
@@ -339,8 +340,8 @@ z <- cbind(y, x)
 
 count <- rep(0, m)
 
-parasims <- 40
-predsims <- 10
+parasims <- 60
+predsims <- 3
 
 residvec <- rep(NA, n*holdout)
 
@@ -644,7 +645,7 @@ plot(diagnostic_obj_5)
 
 #B_0 and B_1
 
-n <- 1000000
+n <- 10000
 
 rho <- runif(n, -1, 1)
 params_1 <- cbind(0, 1, 1, 1, rho) #mu_y, mu_x, s_y, s_x, rho
@@ -682,13 +683,12 @@ plt_3 <-  ggplot(data = prior_betas_111, mapping = aes(x = Beta_1, y = Beta_2)) 
 n <- 1000000
 d <- 3
 muvec<-rep(0,d)
-sigmavec<-c(1,1,1)
 corrs <- corr_from_pcor(n,d)
 
 par_mat_111 <- cbind(matrix(muvec, nrow=n, ncol=d), matrix(c(1,1,1), nrow=n, ncol=d), t(corrs))
-par_mat_122 <- cbind(matrix(muvec, nrow=n, ncol=d), matrix(c(1,2,2), nrow=n, ncol=d), t(corrs))
-par_mat_123 <- cbind(matrix(muvec, nrow=n, ncol=d), matrix(c(1,2,3), nrow=n, ncol=d), t(corrs))
-par_mat_311 <- cbind(matrix(muvec, nrow=n, ncol=d), matrix(c(3,1,1), nrow=n, ncol=d), t(corrs))
+par_mat_122 <- cbind(matrix(muvec, nrow=n, ncol=d), cbind(rep(1, n), rep(2, n), rep(2,n)), t(corrs))
+par_mat_123 <- cbind(matrix(muvec, nrow=n, ncol=d), cbind(rep(1, n), rep(2, n), rep(3,n)), t(corrs))
+par_mat_311 <- cbind(matrix(muvec, nrow=n, ncol=d), cbind(rep(3, n), rep(1, n), rep(1,n)), t(corrs))
 
 
 prior_betas_111 <- betafrommvn(par_mat_111, d)
@@ -749,7 +749,7 @@ grid.arrange(plt_111_dens, plt_122_dens, plt_123_dens, plt_311_dens, ncol=2, nro
 
 rm(list = setdiff(ls(), lsf.str()))
 
-set.seed(2)
+set.seed(1)
 
 #1: Sample priors
 n <- 100 #samples
@@ -781,7 +781,7 @@ for(i in 1:n){
 
 init <- c(rep(1,d), rep(0, d*(d-1)/2))
 para_len <- length(init) + d
-mcmcsamps <- 2000
+mcmcsamps <- 1000
 paramat_pcor <- metrop_samp(n, m, para_len, Data_mat, mcmcsamps, improved_target_dens, 
                             burn=1000)
 
@@ -822,6 +822,7 @@ for(i in 1:(mcmcsamps*n)){
 
 countmat <- matrix(0, (n*m), ncol=d)
 for(i in 1:n){
+  print(i)
   obs <- Data_mat[(((i-1)*m)+1):(i*m),] #block of data from step 2
   for(j in 1:d){
     orderstat <- sort(obs[,j], decreasing=TRUE) #empirical order statistics for jth dimension
@@ -839,8 +840,8 @@ for(i in 1:m){
   }
 }
 
-sd_est <- apply(side_by_side, 1, FUN=sd)
-sd_est/n
+sd_est <- apply(side_by_side/n, 1, FUN=sd)
+sd_est
 
 
 rowMeans(side_by_side)/mcmcsamps
@@ -852,10 +853,10 @@ rowMeans(side_by_side)/mcmcsamps
 
 rm(list = setdiff(ls(), lsf.str())) #removes all variables except functions
 
-set.seed(2)
+set.seed(1)
 
 #1.1.1: Sample n priors
-n<-10
+n<-100
 d<-3 #dimension
 
 muvec<-rep(0,d)
@@ -865,7 +866,7 @@ corrs <- corr_from_pcor(n,d)
 
 #1.1.2 Sample Data given priors
 
-m <- 30 #how many datapoints per iteration.
+m <- 24 #how many datapoints per iteration.
 holdout <- 20
 #We use m-holdout observations to fit the model and then compare
 #sample from predicted (from model) with remaining observations
@@ -881,7 +882,7 @@ for(i in 1:n){
   Data_mat[(((i-1)*m)+1):(i*m),] <- rmvnorm(m, mean=muvec, sigma=Sigma)
 }
 
-#Standardizing (x_1, ..., x_p)
+#Standardizing (y, x_1, ..., x_p)
 for(i in 1:d){
   Data_mat[,i] <- (Data_mat[,i] - mean(Data_mat[,i]))/sd(Data_mat[,i])
 }
@@ -894,11 +895,17 @@ for(i in 1:n){
 #1.1.3 posterior sampling
 
 para_len <- 2*d + (d*(d-1)/2)
-mcmcsamps <- 2000
+mcmcsamps <- 1000
 burnin_mcmc <- 1000
 
 paramat_pcor <- metrop_samp(n, m, para_len, Data_mat, mcmcsamps, 
                        improved_target_dens, burn=burnin_mcmc, holdout=holdout)
+
+
+ESS_mat_red <- matrix(ESS_mat[ESS_mat!=0], ncol=(para_len-d))
+colMeans(ESS_mat_red)
+a <- sum(ESS_mat_red)/(ncol(ESS_mat_red)*nrow(ESS_mat_red)) #average ESS per parameter
+a
 
 mu_1<-paramat_pcor[,1]
 #removing crashed samples
@@ -979,7 +986,7 @@ infomat[,5] <- infomat[,3]^2 - infomat[,4]^2
 #1.1.6 Bayesian lasso
 
 burninit<-1000
-samps<-200
+samps<-1000
 batch_size <- round(sqrt(samps*holdout))
 thinning <- NULL
 betamat_b <- matrix(NA, nrow=n*samps, ncol=d)
