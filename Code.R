@@ -20,20 +20,48 @@ improved_target_dens<-function(theta,x){
   n <- nrow(x)
   d <- ncol(x)
   sigma_sq <- theta[1:d]
-  sigma <- sqrt(sigma_sq)
   parcorrs <- theta[(d+1):L]
-  if(any(sigma_sq<=0)){-Inf}
-  else{
+  if(any(sigma_sq<=0)){
+    -Inf
+  } else {
+    sigma <- sqrt(sigma_sq)
     parcorrmat <- diag(-1, nrow=d)
     parcorrmat[lower.tri(parcorrmat)==TRUE] <- parcorrs
     parcorrmat <- parcorrmat + t(parcorrmat) - diag(diag(parcorrmat))
     
-    if ((sum(eigen(parcorrmat)$val<0)==d)){ # if partial corr mat is negative definite <=> corrmat positive def
+    if((sum(eigen(parcorrmat)$val<0)==d)){ # if partial corr mat is negative definite <=> corrmat positive def
+      
+    Sigma_inv <- solve(diag(sigma) %*% pcor2cor(parcorrmat+diag(2, nrow=d)) %*% diag(sigma)) #pcor2cor defines p. corr mat having unit diagonal instead of negative unit diag
+    -((n-1)/2) * (log(1/det(Sigma_inv)) + sum(diag(Sigma_inv %*% Samp_cov))) - sum(log(sigma_sq))
+    } else {
+      -Inf
+    }
+  }
+}
+
+#test 2 using parametrization p(sigma) = 1/sigma
+
+improved_target_dens<-function(theta,x){
+  L <- length(theta)
+  Samp_cov <- cov(x)
+  n <- nrow(x)
+  d <- ncol(x)
+  sigma <- theta[1:d]
+  parcorrs <- theta[(d+1):L]
+  if(any(sigma<=0)){
+    -Inf
+  } else {
+    parcorrmat <- diag(-1, nrow=d)
+    parcorrmat[lower.tri(parcorrmat)==TRUE] <- parcorrs
+    parcorrmat <- parcorrmat + t(parcorrmat) - diag(diag(parcorrmat))
+    
+    if((sum(eigen(parcorrmat)$val<0)==d)){ # if partial corr mat is negative definite <=> corrmat positive def
       
       Sigma_inv <- solve(diag(sigma) %*% pcor2cor(parcorrmat+diag(2, nrow=d)) %*% diag(sigma)) #pcor2cor defines p. corr mat having unit diagonal instead of negative unit diag
-      -((n-1)/2) * (log(1/det(Sigma_inv)) + sum(diag(Sigma_inv %*% Samp_cov))) - sum(log(sigma_sq))
+      -((n-1)/2) * (log(1/det(Sigma_inv)) + sum(diag(Sigma_inv %*% Samp_cov))) - sum(log(sigma))
+    } else {
+      -Inf
     }
-    else{-Inf}
   }
 }
 
@@ -65,8 +93,7 @@ corr_from_pcor<-function(n, d){
       u <- runif(d*(d-1)/2, -1, 1)
       Sigma[lower.tri(Sigma)] <- u #partial corrs
       Sigma[upper.tri(Sigma)] <- t(Sigma)[upper.tri(Sigma)]
-      if ((sum(eigen(Sigma)$val<0)==d)) 
-        break()
+      if ((sum(eigen(Sigma)$val<0)==d)){break()}
     }
     # Lemma 2 from Artner 2022 space of partial correlation matrices to convert to correlation matrix
     S <- - Sigma
@@ -78,12 +105,15 @@ corr_from_pcor<-function(n, d){
 
 metrop_samp <- function(n, m, para_len, Data_mat, mcmcsamps, target_dens, burn=500, holdout=0){
   paramat <- matrix(NA, nrow=n*mcmcsamps, ncol=para_len)
-  if(holdout==0){t <- m} #use all data to sample from posterior (do not withhold observations)
-  else{t <- m - holdout}
+  if(holdout==0){
+    t <- m
+  } else {
+    t <- m - holdout
+  }
+
   
   pattern <- "[0-9]+\\.?[0-9]*" #for extracting acceptance prob
   
-  tot_acc_pre <- 0 #for measuring total average acceptance rate
   tot_acc_post <- 0
   count_post <- 0
   
@@ -118,7 +148,7 @@ metrop_samp <- function(n, m, para_len, Data_mat, mcmcsamps, target_dens, burn=5
       
       acc_prob_pre <- as.numeric(acc_prob_pre)
       
-      #tuning <- tune_adjust(acc_prob_pre)
+      tuning <- tune_adjust(acc_prob_pre)
       
     }, error=function(e){})
     
@@ -138,8 +168,6 @@ metrop_samp <- function(n, m, para_len, Data_mat, mcmcsamps, target_dens, burn=5
       
       acc_prob_post <- as.numeric(acc_prob_post)
       
-      tot_acc_pre <- tot_acc_pre + acc_prob_pre
-      
       tot_acc_post <- tot_acc_post + acc_prob_post
       
       count_post <- count_post + 1
@@ -147,9 +175,10 @@ metrop_samp <- function(n, m, para_len, Data_mat, mcmcsamps, target_dens, burn=5
       ESS_mat_holder[i, ] <- effectiveSize(sigma_pcor)
       
       mu <- matrix(NA, nrow=mcmcsamps, ncol=d)
+      
       for(j in 1:mcmcsamps){
         parcorrs <- sigma_pcor[j,(d+1):ncol(sigma_pcor)]
-        sigmas<-sigma_pcor[j,1:d]
+        sigmas <- sqrt(sigma_pcor[j,1:d])
         parcorrmat <- diag(1, nrow=d) #pcor2cor assumes positive unit diagonal in partial correlation matrix
         parcorrmat[lower.tri(parcorrmat)==TRUE] <- parcorrs
         parcorrmat <- parcorrmat + t(parcorrmat) - diag(diag(parcorrmat))
@@ -160,7 +189,7 @@ metrop_samp <- function(n, m, para_len, Data_mat, mcmcsamps, target_dens, burn=5
       paramat[(1 + (i-1)*mcmcsamps):(i*mcmcsamps),] <- cbind(mu, sigma_pcor)
     }, error=function(e){})
     sink()
-    cat(count_post, "of", i, " runs accepted\n")
+    cat(count_post, "of", i, " runs accepted \n")
   }
   
   ESS_mat <<- ESS_mat_holder
@@ -752,7 +781,7 @@ rm(list = setdiff(ls(), lsf.str()))
 set.seed(1)
 
 #1: Sample priors
-n <- 100 #samples
+n <- 5 #samples
 d <- 3 #dimension
 
 muvec<-rep(0,d)
@@ -763,7 +792,7 @@ corrs <- corr_from_pcor(n,d)
 
 #2 Sample Data given priors
 
-m <- 5 #how many datapoints we use to estimate the posterior sample
+m <- 4 #how many datapoints we use to estimate the posterior sample
 Data_mat<-matrix(0, nrow=(n*m), ncol=d)
 
 
@@ -777,10 +806,15 @@ for(i in 1:n){
   Data_mat[(((i-1)*m)+1):(i*m),] <- a
 }
 
+
+#Standardizing (y, x_1, ..., x_p)
+for(i in 1:d){
+  Data_mat[,i] <- (Data_mat[,i] - mean(Data_mat[,i]))/sd(Data_mat[,i])
+}
+
 #3 Estimate parameters
 
-init <- c(rep(1,d), rep(0, d*(d-1)/2))
-para_len <- length(init) + d
+para_len <- 2*d + (d*(d-1))/2
 mcmcsamps <- 1000
 paramat_pcor <- metrop_samp(n, m, para_len, Data_mat, mcmcsamps, improved_target_dens, 
                             burn=1000)
@@ -856,7 +890,7 @@ rm(list = setdiff(ls(), lsf.str())) #removes all variables except functions
 set.seed(1)
 
 #1.1.1: Sample n priors
-n<-100
+n<-5
 d<-3 #dimension
 
 muvec<-rep(0,d)
@@ -866,7 +900,7 @@ corrs <- corr_from_pcor(n,d)
 
 #1.1.2 Sample Data given priors
 
-m <- 24 #how many datapoints per iteration.
+m <- 2020 #how many datapoints per iteration.
 holdout <- 20
 #We use m-holdout observations to fit the model and then compare
 #sample from predicted (from model) with remaining observations
