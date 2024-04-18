@@ -14,34 +14,9 @@ tune_adjust<-function(a_prob){
   else{3 * (a_prob) +  1/4}
 }
 
-improved_target_dens<-function(theta,x){
-  L <- length(theta)
-  Samp_cov <- cov(x)
-  n <- nrow(x)
-  d <- ncol(x)
-  sigma_sq <- theta[1:d]
-  parcorrs <- theta[(d+1):L]
-  if(any(sigma_sq<=0)){
-    -Inf
-  } else {
-    sigma <- sqrt(sigma_sq)
-    parcorrmat <- diag(-1, nrow=d)
-    parcorrmat[lower.tri(parcorrmat)==TRUE] <- parcorrs
-    parcorrmat <- parcorrmat + t(parcorrmat) - diag(diag(parcorrmat))
-    
-    if((sum(eigen(parcorrmat)$val<0)==d)){ # if partial corr mat is negative definite <=> corrmat positive def
-      
-    Sigma_inv <- solve(diag(sigma) %*% pcor2cor(parcorrmat+diag(2, nrow=d)) %*% diag(sigma)) #pcor2cor defines p. corr mat having unit diagonal instead of negative unit diag
-    -((n-1)/2) * (log(1/det(Sigma_inv)) + sum(diag(Sigma_inv %*% Samp_cov))) - sum(log(sigma_sq))
-    } else {
-      -Inf
-    }
-  }
-}
-
 #test 2 using parametrization p(sigma) = 1/sigma
 
-improved_target_dens<-function(theta,x){
+improved_target_dens <- function(theta,x){
   L <- length(theta)
   Samp_cov <- cov(x)
   n <- nrow(x)
@@ -110,7 +85,6 @@ metrop_samp <- function(n, m, para_len, Data_mat, mcmcsamps, target_dens, burn=5
   } else {
     t <- m - holdout
   }
-
   
   pattern <- "[0-9]+\\.?[0-9]*" #for extracting acceptance prob
   
@@ -178,13 +152,13 @@ metrop_samp <- function(n, m, para_len, Data_mat, mcmcsamps, target_dens, burn=5
       
       for(j in 1:mcmcsamps){
         parcorrs <- sigma_pcor[j,(d+1):ncol(sigma_pcor)]
-        sigmas <- sqrt(sigma_pcor[j,1:d])
+        sigmas <- sigma_pcor[j,1:d]
         parcorrmat <- diag(1, nrow=d) #pcor2cor assumes positive unit diagonal in partial correlation matrix
         parcorrmat[lower.tri(parcorrmat)==TRUE] <- parcorrs
         parcorrmat <- parcorrmat + t(parcorrmat) - diag(diag(parcorrmat))
         corrmat <- pcor2cor(parcorrmat)
-        Sigma <- diag(sigmas) %*% corrmat %*% diag(sigmas)
-        mu[j,] <- rmvnorm(1, mean=(colMeans(block)), sigma = (1/n *Sigma))
+        Sigma <- (1/m) * diag(sigmas) %*% corrmat %*% diag(sigmas)
+        mu[j,] <- rmvnorm(1, mean=(colMeans(block)), sigma = (Sigma))
       }
       paramat[(1 + (i-1)*mcmcsamps):(i*mcmcsamps),] <- cbind(mu, sigma_pcor)
     }, error=function(e){})
@@ -890,7 +864,7 @@ rm(list = setdiff(ls(), lsf.str())) #removes all variables except functions
 set.seed(1)
 
 #1.1.1: Sample n priors
-n<-5
+n<-50
 d<-3 #dimension
 
 muvec<-rep(0,d)
@@ -1098,7 +1072,13 @@ hist(blasso_beta[,3], breaks=20, main="Beta_2")
 
 summary(ourmod_mvn)
 
-par(mfrow=c(1,3))
+par(mfrow=c(3,3))
+hist(ourmod_mvn[,1])
+hist(ourmod_mvn[,2])
+hist(ourmod_mvn[,3])
+hist(ourmod_mvn[,4])
+hist(ourmod_mvn[,5])
+hist(ourmod_mvn[,6])
 hist(ourmod_mvn[,7])
 hist(ourmod_mvn[,8])
 hist(ourmod_mvn[,9])
