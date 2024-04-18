@@ -10,8 +10,11 @@ library(latex2exp)
 library(gridExtra)
 
 tune_adjust<-function(a_prob){
-  if(a_prob>0.25){4*(a_prob-0.25) + 1}
-  else{3 * (a_prob) +  1/4}
+  if(a_prob>0.25){
+    4*(a_prob-0.25) + 1
+  } else{
+      3 * (a_prob) +  1/4
+  }
 }
 
 #test 2 using parametrization p(sigma) = 1/sigma
@@ -94,7 +97,7 @@ metrop_samp <- function(n, m, para_len, Data_mat, mcmcsamps, target_dens, burn=5
   ESS_mat_holder <- matrix(0, nrow=n, ncol=((d) + (d)*(d-1)/2))
   
   for(i in 1:n){
-    block <- Data_mat[((i-1)*m+1):(i*t),]
+    block <- Data_mat[((i-1)*m+1):(((i-1)*m)+t),]
     
     #Determining initialization cheaply
     covmat <- cov(block)
@@ -122,7 +125,7 @@ metrop_samp <- function(n, m, para_len, Data_mat, mcmcsamps, target_dens, burn=5
       
       acc_prob_pre <- as.numeric(acc_prob_pre)
       
-      tuning <- tune_adjust(acc_prob_pre)
+      #tuning <- tune_adjust(acc_prob_pre)
       
     }, error=function(e){})
     
@@ -134,7 +137,7 @@ metrop_samp <- function(n, m, para_len, Data_mat, mcmcsamps, target_dens, burn=5
       sink(file="test.txt")
       
       sigma_pcor <- MCMCmetrop1R(improved_target_dens, theta.init=init, 
-                                 burnin = burn, x=block, mcmc=mcmcsamps, tune=tuning)
+                                 burnin = (burn+750), x=block, mcmc=mcmcsamps, tune=tuning)
       
       out <- readLines("test.txt")
       
@@ -260,59 +263,21 @@ ysim<-function(theta, x){
   y
 }
 
-n<-100000
-#data<-rmvnorm(3, mean=rep(0, 2), sigma=matrix(data=c(1,0.5,0.5,1), nrow=2))
-Sigma<-matrix(data=c(10, 5, 5, 100), nrow=2)
-a<-sqrt(solve(matrix(data=c(Sigma[1,1], 0, 0, Sigma[2,2]), nrow=2)))
-cor_mat<-a %*% Sigma %*% a
-cor_mat
-data<-rmvnorm(n, mean=c(5,-5), sigma=Sigma)
-a<-alg(data, n) # simulates rho, sigma1, sigma2, mu1, mu2
-plot(data, col="red")
 
 
-hist(a[,1]) #rho
-hist(a[,2], breaks=1000) #sigma1
-hist(a[,3], breaks=1000) #sigma2
-hist(a[,4], breaks=1000) #mu1
-hist(a[,5], breaks=1000) #mu2
-
-#Check means
-mean(a[,1])
-mean(a[,2])
-mean(a[,3])
-mean(a[,4])
-mean(a[,5])
-
-#Simulating sample from predictive distribution (not yet reparametrized)
-predsims<-10000
-
-#Prediktiv tetthet
-b<-t(apply(a, 1, FUN=predsamp))
-plot(b[,1], b[,2], xlab="x", ylab="y", ylim=c(-20, 20), xlim=c(-20, 20))
-points(data, col="red")
-
-sorted1<-sort(data[,1], decreasing=TRUE)
-sorted2<-sort(data[,2], decreasing=TRUE)
-
-mean(ifelse(b[,1]>sorted1[1], 1, 0))
-mean(ifelse(b[,1]>sorted1[2], 1, 0))
-mean(ifelse(b[,1]>sorted1[3], 1, 0))
-mean(ifelse(b[,1]>sorted1[4], 1, 0))
-
-mean(ifelse(b[,2]>sorted2[1], 1, 0))
-mean(ifelse(b[,2]>sorted2[2], 1, 0))
-mean(ifelse(b[,2]>sorted2[3], 1, 0))
-mean(ifelse(b[,2]>sorted2[4], 1, 0))
+#############################################################################################
+### Sampling from bivariate normal
+#############################################################################################
 
 
+rm(list = setdiff(ls(), lsf.str())) #Clear variables
 
 #Sample rho and other parameters
-n<-100000
+set.seed(1)
+
+n<-10000
 
 rho<-runif(n, -0.99, 0.99)
-
-hist(rho)
 
 mu_1 <- 0
 mu_2 <- 0
@@ -324,26 +289,27 @@ sigma_2 <- 1
 meanvec<-c(mu_1, mu_2)
 m <- 5
 holdout <- 2
-y<-c()
-x<-c()
-holdout_x <- c()
-holdout_y <- c()
+t <- m + holdout
+y<-rep(NA, (n*m))
+x<-rep(NA, (n*m))
+holdout_x <- rep(NA, (n*holdout))
+holdout_y <- rep(NA, (n*holdout))
 
 for(i in 1:n){
   print(i)
   Sigma <- matrix(data=c(sigma_1^2, sigma_1*sigma_2*rho[i], sigma_1*sigma_2*rho[i], sigma_2^2), nrow=2)
   a <- rmvnorm((m+holdout), mean=meanvec, sigma=Sigma)
-  y <- append(a[1:(m), 1], y)
-  x <- append(a[1:(m), 2], x)
-  holdout_y <- append(a[(m+1):(m+holdout), 1], holdout_y)
-  holdout_x <- append(a[(m+1):(m+holdout), 2], holdout_x)
+  y[((i-1)*m + 1): ((i-1)*m + m)] <- a[1:m, 1]
+  x[((i-1)*m + 1): ((i-1)*m + m)] <- a[1:m, 2]
+  holdout_y[((i-1)*holdout + 1):(i*holdout)] <- a[(m+1):(m+holdout), 1]
+  holdout_x[((i-1)*holdout + 1):(i*holdout)] <- a[(m+1):(m+holdout), 2]
 }
 
 z <- cbind(y, x)
 
 count <- rep(0, m)
 
-parasims <- 60
+parasims <- 1
 predsims <- 3
 
 residvec <- rep(NA, n*holdout)
@@ -568,8 +534,8 @@ init_3
 
 
 diagnostic_obj_3 <- MCMCmetrop1R(improved_target_dens, theta.init=init_3, 
-                                 burnin = 1, x=examp_data,#tune=c(1,1,1,12,12,12), 
-                                 mcmc=1700)
+                                 burnin = 1000, x=examp_data,tune=c(1,1,1,1,10,1), 
+                                 mcmc=20000)
 
 sink(file="test.txt")
 
@@ -620,6 +586,8 @@ b <- effectiveSize(diagnostic_obj)
 b
 sum(a)
 sum(b)
+
+
 
 
 plot(diagnostic_obj_3) #trace plots convincing for m >= d + 1
@@ -755,7 +723,7 @@ rm(list = setdiff(ls(), lsf.str()))
 set.seed(1)
 
 #1: Sample priors
-n <- 5 #samples
+n <- 100 #samples
 d <- 3 #dimension
 
 muvec<-rep(0,d)
@@ -766,8 +734,8 @@ corrs <- corr_from_pcor(n,d)
 
 #2 Sample Data given priors
 
-m <- 4 #how many datapoints we use to estimate the posterior sample
-Data_mat<-matrix(0, nrow=(n*m), ncol=d)
+m <- 10 #how many datapoints we use to estimate the posterior sample
+Data_mat<-matrix(NA, nrow=(n*m), ncol=d)
 
 
 for(i in 1:n){
@@ -775,9 +743,7 @@ for(i in 1:n){
   corrmat[lower.tri(corrmat)==TRUE] <- corrs[,i]
   corrmat <- corrmat + t(corrmat) - diag(diag(corrmat))
   Sigma <- diag(sigmavec) %*% corrmat %*% diag(sigmavec)
-  #Output
-  a <- rmvnorm(m, mean=muvec, sigma=Sigma)
-  Data_mat[(((i-1)*m)+1):(i*m),] <- a
+  Data_mat[(((i-1)*m)+1):(i*m),] <- rmvnorm(m, mean=muvec, sigma=Sigma)
 }
 
 
@@ -874,12 +840,12 @@ corrs <- corr_from_pcor(n,d)
 
 #1.1.2 Sample Data given priors
 
-m <- 2020 #how many datapoints per iteration.
+m <- 30 #how many datapoints per iteration.
 holdout <- 20
 #We use m-holdout observations to fit the model and then compare
 #sample from predicted (from model) with remaining observations
 
-Data_mat<-matrix(0, nrow=(n*m), ncol=d)
+Data_mat<-matrix(NA, nrow=(n*m), ncol=d)
 mth_obs<-matrix(NA, nrow = (n*holdout), ncol=d) #holdout observations
 
 for(i in 1:n){
