@@ -125,7 +125,7 @@ metrop_samp <- function(n, m, para_len, Data_mat, mcmcsamps, target_dens, burn=5
       
       acc_prob_pre <- as.numeric(acc_prob_pre)
       
-      #tuning <- tune_adjust(acc_prob_pre)
+      tuning <- tune_adjust(acc_prob_pre)
       
     }, error=function(e){})
     
@@ -137,7 +137,7 @@ metrop_samp <- function(n, m, para_len, Data_mat, mcmcsamps, target_dens, burn=5
       sink(file="test.txt")
       
       sigma_pcor <- MCMCmetrop1R(improved_target_dens, theta.init=init, 
-                                 burnin = (burn+750), x=block, mcmc=mcmcsamps, tune=tuning)
+                                 burnin = (burn), x=block, mcmc=mcmcsamps, tune=tuning)
       
       out <- readLines("test.txt")
       
@@ -381,14 +381,14 @@ rm(list = setdiff(ls(), lsf.str()))
 set.seed(1)
 
 
-samp_corrs <- corr_from_pcor(5000, 3)
+samp_corrs <- corr_from_pcor(20000, 3)
 
 # 1.1 pick out m observations close to parameter edge
 
 d <- 3
 j <- 0
 i <- 0
-m <- 20
+m <- 1000
 par_list <- list()
 while((j<m) & (i<5000)){
   i <- i + 1
@@ -412,11 +412,11 @@ for(i in 1:m){
 
 # 1.2 checking best absolute tune param size
 
-n_tune_vec <- 4
+n_tune_vec <- 5
 tot_ESS <- matrix(0, nrow=n_tune_vec, ncol=2*d)
 
 for(i in 1:n_tune_vec){
-  tune_vec <- i/2  #1/2, 1, 3/2, ... for each tuning param
+  tune_vec <- 1/4 + i/4  #1/2, 3/4, 1, ... for each tuning param
   for(j in 1:m){
     #Determining initialization cheaply
     covmat <- cov(data_list[[j]])
@@ -425,7 +425,7 @@ for(i in 1:n_tune_vec){
     
     tryCatch({
       chain <- MCMCmetrop1R(improved_target_dens, theta.init=init, 
-                          burnin = 500, x=data_list[[j]],tune=tune_vec, mcmc=3000)
+                          burnin = 1000, x=data_list[[j]],tune=tune_vec, mcmc=1000)
     
       tot_ESS[i,] <- tot_ESS[i,] + effectiveSize(chain)
     }, error=function(e){})
@@ -433,14 +433,14 @@ for(i in 1:n_tune_vec){
 }
 
 tot_ESS
-rowMeans(tot_ESS)
+rowMeans(tot_ESS)  #tune=1 seems best
 
 #Checking increasing tuning parameter for marginal variances
 
 tot_ESS <- matrix(0, nrow=n_tune_vec, ncol=2*d)
 
 for(i in 1:n_tune_vec){
-  tune_vec <- c(rep(1, d)*i/2, rep(1,d))
+  tune_vec <- c((rep(1/4, d) + (rep(1/4,d) * (i))), rep(1,d))
   for(j in 1:m){
     #Determining initialization cheaply
     covmat <- cov(data_list[[j]])
@@ -449,7 +449,7 @@ for(i in 1:n_tune_vec){
     
     tryCatch({
       chain <- MCMCmetrop1R(improved_target_dens, theta.init=init, 
-                            burnin = 500, x=data_list[[j]], tune=tune_vec, mcmc=2000)
+                            burnin = 1000, x=data_list[[j]], tune=tune_vec, mcmc=1000)
       
       tot_ESS[i,] <- tot_ESS[i,] + effectiveSize(chain)
     }, error=function(e){})
@@ -457,14 +457,14 @@ for(i in 1:n_tune_vec){
 }
 
 tot_ESS
-rowMeans(tot_ESS) #tuning params for sigmas = 1 best
+rowMeans(tot_ESS) #tuning params for sigmas = 3/4 best seemingly (tested for m=100, 2 seeds)
 
 #Checking tuning parameter for partial correlations
 
 tot_ESS <- matrix(0, nrow=n_tune_vec, ncol=2*d)
 
 for(i in 1:n_tune_vec){
-  tune_vec <- c(rep(1, d), rep(1,d)*(i))
+  tune_vec <- c(rep(1, d), (rep(1/4, d) + (rep(1/4,d) * (i))))
   for(j in 1:m){
     #Determining initialization cheaply
     covmat <- cov(data_list[[j]])
@@ -642,12 +642,23 @@ plt_2 <-  ggplot(data = prior_beta_2, mapping = aes(x = Beta_0, y = Beta_1)) +
   xlim(-6, 6) + ylim(-6,6) + xlab(TeX(r"($\Beta_0)")) + ylab(TeX(r"($\Beta_1)")) +
   geom_hex(bins=150) + scale_fill_continuous(type = "viridis")
 
-plt_3 <-  ggplot(data = prior_betas_111, mapping = aes(x = Beta_1, y = Beta_2)) +
-  xlim(-6, 6) + ylim(-6,6) + xlab(TeX(r"($\Beta_1)")) + ylab(TeX(r"($\Beta_2)")) +
-  geom_hex(bins=150) + scale_fill_continuous(type = "viridis")
+x<-rnorm(20)
+y<-rnorm(20,1,0.5)
+df<-data.frame(x,y)
 
 
+colors <- c("Sepal Width" = "blue", "Petal Length" = "red", "Petal Width" = "orange")
 
+plt_ex <-  ggplot(df,aes(x,y)) + 
+  xlim(-1.1, 1.1) + ylim(-2.1,4.1) + xlab(TeX(r"($\rho)")) + ylab(" ")
+
+plt_ex +  geom_segment(aes(x=-1, y=2, xend=1, yend=0), size=2, aes(col="darkgoldenrod1")) + 
+  geom_segment(aes(x=-1, y=-1, xend=1, yend=1), size=2, col="darkorange") + 
+  geom_segment(aes(x=-1, y=4, xend=1, yend=0), size=2, col="chartreuse") + 
+  geom_segment(aes(x=-1, y=-2, xend=1, yend=2), size=2, col="chartreuse4") + 
+  scale_color_manual(name='Regression Model',
+                     breaks=c('Linear', 'Quadratic', 'Cubic'),
+                     values=c('Cubic'='pink', 'Quadratic'='blue', 'Linear'='purple'))
 
 #B_1 and B_2
 
@@ -734,7 +745,7 @@ corrs <- corr_from_pcor(n,d)
 
 #2 Sample Data given priors
 
-m <- 10 #how many datapoints we use to estimate the posterior sample
+m <- 9 #how many datapoints we use to estimate the posterior sample
 Data_mat<-matrix(NA, nrow=(n*m), ncol=d)
 
 
