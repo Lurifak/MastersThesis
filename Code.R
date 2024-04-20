@@ -614,6 +614,53 @@ plot(diagnostic_obj_5)
 
 #Visualizing betas for our prior
 
+#In general
+n <- 500000
+mvnmat <- matrix(NA, nrow=n, ncol=5)
+for(i in 1:n){
+  mvnmat[i,1:2] <- c(runif(1, -10, 10), runif(1, -10, 10))
+  mvnmat[i,3:4] <- c(rgamma(1, 0.01, 0.01), rgamma(1, 0.01, 0.01))
+  mvnmat[i,5] <- runif(1, -1, 1)
+}
+
+mvnmat_11 <- cbind(mvnmat[,1:2], cbind(rep(1,n), rep(1,n)), mvnmat[,5])
+mvnmat_21 <- cbind(mvnmat[,1:2], cbind(rep(2,n), rep(1,n)), mvnmat[,5])
+mvnmat_12 <- cbind(mvnmat[,1:2], cbind(rep(1,n), rep(2,n)), mvnmat[,5])
+mvnmat_22 <- cbind(mvnmat[,1:2], cbind(rep(5,n), rep(1,n)), mvnmat[,5])
+
+betas_11 <- betafrommvn(mvnmat_11, 2)
+betas_12 <- betafrommvn(mvnmat_12, 2)
+betas_21 <- betafrommvn(mvnmat_21, 2)
+betas_22 <- betafrommvn(mvnmat_22, 2)
+
+colnames(betas_11) <- c("Beta_0", "Beta_1")
+colnames(betas_12) <- c("Beta_0", "Beta_1")
+colnames(betas_21) <- c("Beta_0", "Beta_1")
+colnames(betas_22) <- c("Beta_0", "Beta_1")
+
+
+plt_11_dens <-  ggplot(data = betas_11, mapping = aes(x = Beta_0, y = Beta_1)) +
+  xlim(-20, 20) + ylim(-2,2) + xlab(TeX(r"($\Beta_0)")) + ylab(TeX(r"($\Beta_1)")) +
+  stat_density_2d(geom = "raster",aes(fill = after_stat(density)),contour = FALSE) + 
+  scale_fill_viridis_c(option="turbo")
+
+plt_12_dens <-  ggplot(data = betas_12, mapping = aes(x = Beta_0, y = Beta_1)) +
+  xlim(-15, 15) + ylim(-1,1) + xlab(TeX(r"($\Beta_0)")) + ylab(TeX(r"($\Beta_1)")) +
+  stat_density_2d(geom = "raster",aes(fill = after_stat(density)),contour = FALSE) + 
+  scale_fill_viridis_c(option="turbo")
+
+plt_21_dens <-  ggplot(data = betas_21, mapping = aes(x = Beta_0, y = Beta_1)) +
+  xlim(-30, 30) + ylim(-2,2) + xlab(TeX(r"($\Beta_0)")) + ylab(TeX(r"($\Beta_1)")) +
+  stat_density_2d(geom = "raster",aes(fill = after_stat(density)),contour = FALSE) + 
+  scale_fill_viridis_c(option="turbo")
+
+plt_22_dens <-  ggplot(data = betas_22, mapping = aes(x = Beta_0, y = Beta_1)) +
+  xlim(-50, 50) + ylim(-5,5) + xlab(TeX(r"($\Beta_0)")) + ylab(TeX(r"($\Beta_1)")) +
+  stat_density_2d(geom = "raster",aes(fill = after_stat(density)),contour = FALSE) + 
+  scale_fill_viridis_c(option="turbo")
+
+grid.arrange(plt_11_dens, plt_12_dens, plt_21_dens, plt_22_dens, ncol=2, nrow=2)
+
 #B_0 and B_1
 
 n <- 10000
@@ -734,7 +781,7 @@ rm(list = setdiff(ls(), lsf.str()))
 set.seed(1)
 
 #1: Sample priors
-n <- 100 #samples
+n <- 1000 #samples
 d <- 3 #dimension
 
 muvec<-rep(0,d)
@@ -826,9 +873,10 @@ for(i in 1:m){
 }
 
 sd_est <- apply(side_by_side/n, 1, FUN=sd)
-sd_est
+sd_est #overestimate
 
 
+seq(from=m, to=1)/(m+1) #expected
 rowMeans(side_by_side)/mcmcsamps
 
 #1: Comparison Bayesian Lasso and reparametrized model
@@ -841,7 +889,7 @@ rm(list = setdiff(ls(), lsf.str())) #removes all variables except functions
 set.seed(1)
 
 #1.1.1: Sample n priors
-n<-50
+n<-500
 d<-3 #dimension
 
 muvec<-rep(0,d)
@@ -851,7 +899,7 @@ corrs <- corr_from_pcor(n,d)
 
 #1.1.2 Sample Data given priors
 
-m <- 30 #how many datapoints per iteration.
+m <- 27 #how many datapoints per iteration.
 holdout <- 20
 #We use m-holdout observations to fit the model and then compare
 #sample from predicted (from model) with remaining observations
@@ -1066,12 +1114,12 @@ hist(ourmod_mvn[,9])
 
 rm(list = setdiff(ls(), lsf.str())) #removes all variables except functions
 
-set.seed(2)
+set.seed(1)
 
 n <- 100
 d <- 3
 p <- (d-1) #for notational purposes, denote vector (y, x_1 , ..., x_p)
-m <- 70
+m <- 100
 holdout <- 20
 
 r <- 1
@@ -1132,7 +1180,7 @@ for(i in 1:n){
 
 #1.2.2 Bayesian lasso
 burninit<-1000
-samps<-200
+samps<-1000
 batch_size <- round(sqrt(samps*holdout))
 thinning <- NULL
 betamat_b <- matrix(NA, nrow=n*samps, ncol=d)
@@ -1180,7 +1228,7 @@ infomat_b[,5] <- infomat_b[,3]^2 - infomat_b[,4]^2
 #1.2.3 Our model
 
 para_len <- 2*d + (d*(d-1)/2)
-mcmcsamps <- 3000
+mcmcsamps <- 1000
 burnin_mcmc <- 1000
 
 paramat_pcor <- metrop_samp(n, m, para_len, Data_mat, mcmcsamps, 
@@ -1214,7 +1262,7 @@ betamat <- betafrommvn(paramat, d)
 
 #1.2.4 residuals in 1 dimension
 batch_size <- round(sqrt(mcmcsamps*holdout))
-infomat <- matrix(NA, nrow = holdout*mcmcsamps*n, ncol=5)
+infomat <- matrix(NA, nrow = holdout*mcmcsamps*n_1, ncol=5)
 colnames(infomat) <- c("Predictions", "Actual", "Residual", "Estimated SE", "Corrected MSE")
 
 for(i in 1:n_1){
@@ -1248,7 +1296,7 @@ for(i in 1:n_1){
   }
 }
 
-placeholder <- matrix(data=NA, nrow=mcmcsamps*holdout, ncol=n)
+placeholder <- matrix(data=NA, nrow=mcmcsamps*holdout, ncol=n_1)
 
 for(i in 1:n_1){
   placeholder[1:(mcmcsamps*holdout), i] <- infomat[((i-1)*(mcmcsamps*holdout)+1):(i*mcmcsamps*holdout),1]
