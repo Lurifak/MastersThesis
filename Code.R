@@ -774,7 +774,10 @@ plt_311_dens <-  ggplot(data = prior_betas_311, mapping = aes(x = Beta_1, y = Be
 grid.arrange(plt_111_dens, plt_122_dens, plt_123_dens, plt_311_dens, ncol=2, nrow=2)
 
 
-#General check of predictive distribution for >= 3 dimensions
+#############################################################################################
+### General check of predictive distribution for >= 3 dimensions
+#############################################################################################
+
 
 rm(list = setdiff(ls(), lsf.str()))
 
@@ -879,7 +882,10 @@ sd_est #overestimate
 seq(from=m, to=1)/(m+1) #expected
 rowMeans(side_by_side)/mcmcsamps
 
-#1: Comparison Bayesian Lasso and reparametrized model
+
+#############################################################################################
+### Comparing MSPE with data from MVN priors
+#############################################################################################
 
 
 # From our prior
@@ -889,8 +895,8 @@ rm(list = setdiff(ls(), lsf.str())) #removes all variables except functions
 set.seed(1)
 
 #1.1.1: Sample n priors
-n<-500
-d<-3 #dimension
+n<-1000
+d<-4 #dimension
 
 muvec<-rep(0,d)
 sigmavec<-rep(1,d)
@@ -899,7 +905,7 @@ corrs <- corr_from_pcor(n,d)
 
 #1.1.2 Sample Data given priors
 
-m <- 27 #how many datapoints per iteration.
+m <- 70 #how many datapoints per iteration.
 holdout <- 20
 #We use m-holdout observations to fit the model and then compare
 #sample from predicted (from model) with remaining observations
@@ -1108,7 +1114,12 @@ hist(ourmod_mvn[,7])
 hist(ourmod_mvn[,8])
 hist(ourmod_mvn[,9])
 
-# Generating data from bayesian lasso and then comparing
+
+
+
+#############################################################################################
+### Comparing MSPE with data from B. Lasso priors
+#############################################################################################
 
 #1.2.1 Generating priors
 
@@ -1119,7 +1130,7 @@ set.seed(1)
 n <- 100
 d <- 3
 p <- (d-1) #for notational purposes, denote vector (y, x_1 , ..., x_p)
-m <- 100
+m <- 30
 holdout <- 20
 
 r <- 1
