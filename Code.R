@@ -784,7 +784,7 @@ rm(list = setdiff(ls(), lsf.str()))
 set.seed(1)
 
 #1: Sample priors
-n <- 1000 #samples
+n <- 10000 #samples
 d <- 3 #dimension
 
 muvec<-rep(0,d)
@@ -805,12 +805,6 @@ for(i in 1:n){
   corrmat <- corrmat + t(corrmat) - diag(diag(corrmat))
   Sigma <- diag(sigmavec) %*% corrmat %*% diag(sigmavec)
   Data_mat[(((i-1)*m)+1):(i*m),] <- rmvnorm(m, mean=muvec, sigma=Sigma)
-}
-
-
-#Standardizing (y, x_1, ..., x_p)
-for(i in 1:d){
-  Data_mat[,i] <- (Data_mat[,i] - mean(Data_mat[,i]))/sd(Data_mat[,i])
 }
 
 #3 Estimate parameters
@@ -895,8 +889,8 @@ rm(list = setdiff(ls(), lsf.str())) #removes all variables except functions
 set.seed(1)
 
 #1.1.1: Sample n priors
-n<-1000
-d<-4 #dimension
+n <- 1000
+d <- 3 #dimension
 
 muvec<-rep(0,d)
 sigmavec<-rep(1,d)
@@ -921,9 +915,11 @@ for(i in 1:n){
   Data_mat[(((i-1)*m)+1):(i*m),] <- rmvnorm(m, mean=muvec, sigma=Sigma)
 }
 
-#Standardizing (y, x_1, ..., x_p)
-for(i in 1:d){
-  Data_mat[,i] <- (Data_mat[,i] - mean(Data_mat[,i]))/sd(Data_mat[,i])
+#Standardizing, as assumed for B. Lasso
+for(i in 1:n){
+  for(j in 1:d){
+    Data_mat[((i-1)*m+1):(i*m),j] <- (Data_mat[((i-1)*m+1):(i*m),j] - mean(Data_mat[((i-1)*m+1):(i*m),j]))/sd(Data_mat[((i-1)*m+1):(i*m),j])
+  }
 }
 
 
@@ -1127,10 +1123,10 @@ rm(list = setdiff(ls(), lsf.str())) #removes all variables except functions
 
 set.seed(1)
 
-n <- 100
+n <- 10000
 d <- 3
 p <- (d-1) #for notational purposes, denote vector (y, x_1 , ..., x_p)
-m <- 30
+m <- 24
 holdout <- 20
 
 r <- 1
@@ -1171,7 +1167,7 @@ for(i in 1:n){
   fulldata[(1 + ((i-1)*m)):(i*m),] <- rmvnorm(m, muvec, Sigma)
 }
 
-#Generate y conditional on X, \Beta, \sigma^2 (mu not included not sure how to and if i should)
+#Generate y conditional on X, \Beta, \sigma^2 (mu is improper and set to 0)
 y <- rep(NA, n*m)
 for(i in 1:(n)){
   print(i)
@@ -1181,8 +1177,10 @@ for(i in 1:(n)){
 Data_mat <- cbind(y,fulldata)
 
 #Standardizing, as assumed for B. Lasso
-for(i in 1:d){
-  Data_mat[,i] <- (Data_mat[,i] - mean(Data_mat[,i]))/sd(Data_mat[,i])
+for(i in 1:n){
+  for(j in 1:d){
+    Data_mat[((i-1)*m+1):(i*m),j] <- (Data_mat[((i-1)*m+1):(i*m),j] - mean(Data_mat[((i-1)*m+1):(i*m),j]))/sd(Data_mat[((i-1)*m+1):(i*m),j])
+  }
 }
 
 for(i in 1:n){
@@ -1234,6 +1232,7 @@ for(i in 1:n){
 
 infomat_b[,5] <- infomat_b[,3]^2 - infomat_b[,4]^2
 
+mean(infomat_b[,5])
 
 
 #1.2.3 Our model
@@ -1245,6 +1244,11 @@ burnin_mcmc <- 1000
 paramat_pcor <- metrop_samp(n, m, para_len, Data_mat, mcmcsamps, 
                             improved_target_dens, burn=burnin_mcmc, holdout=holdout)
 
+
+ESS_mat_red <- matrix(ESS_mat[ESS_mat!=0], ncol=(para_len-d))
+colMeans(ESS_mat_red)
+a <- sum(ESS_mat_red)/(ncol(ESS_mat_red)*nrow(ESS_mat_red)) #average ESS per parameter
+a
 
 mu_1 <- paramat_pcor[,1]
 #removing crashed samples
@@ -1316,7 +1320,6 @@ for(i in 1:n_1){
 temp <- batchSE(as.mcmc(placeholder), batchSize = batch_size)
 
 for(i in 1:n_1){
-  print(i)
   infomat[((i-1)*(mcmcsamps*holdout)+1):(i*mcmcsamps*holdout),4] <- rep(temp[i], (mcmcsamps*holdout))
 }
 
@@ -1393,5 +1396,3 @@ hist(paramat[,13], breaks=100, main="rho_24")
 hist(paramat[,14], breaks=100, main="rho_34")
 
 colMeans(paramat)
-
-
