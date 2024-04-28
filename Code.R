@@ -8,6 +8,8 @@ library(ggplot2)
 library(ggalt)
 library(latex2exp)
 library(gridExtra)
+library(datasets)
+
 
 tune_adjust<-function(a_prob){
   if(a_prob>0.25){
@@ -1396,3 +1398,61 @@ hist(paramat[,13], breaks=100, main="rho_24")
 hist(paramat[,14], breaks=100, main="rho_34")
 
 colMeans(paramat)
+
+#############################################################################################
+### Example: Longley dataset (Orange trees circumference (cm) vs age (days))
+#############################################################################################
+
+rm(list = setdiff(ls(), lsf.str())) #Clear variables
+
+set.seed(4)
+
+samps <- 100000 #number of posterior samples
+n_obs <- 10
+
+data <- Orange
+data <- data[,-1] #Remove type of tree from dataset
+data <- data[sample(35,n_obs),] #pick n_obs observations
+
+summary(data)
+dim(data)
+
+lmcoef <- lm(circumference ~ age, data=data)$coefficients
+lmcoef
+
+bcoef <- blasso(data$age, data$circumference, T=samps, thin=10)
+colMeans(cbind(bcoef$mu, bcoef$beta)) #bayesian lasso posterior mean estimates
+
+covmat <- cov(data)
+pcorrmat <- cor2pcor(cov2cor(covmat))
+init <- c(sqrt(diag(covmat)), pcorrmat[lower.tri(pcorrmat)==TRUE])
+
+chain <- MCMCmetrop1R(improved_target_dens, theta.init=init, 
+                      burnin = 10000, x=data, mcmc=samps)
+colMeans(chain)
+effectiveSize(chain)
+
+#sample mu
+mu <- matrix(NA, nrow=samps, ncol=2)
+for(j in 1:samps){
+  sigmas <- c(chain[j,2], chain[j,1])
+  corrmat <- toeplitz(c(1,chain[j,3]))
+  Sigma <- (1/n_obs) * diag(sigmas) %*% corrmat %*% diag(sigmas)
+  mu[j,] <- rmvnorm(1, mean=(colMeans(data)), sigma = (Sigma))
+}
+
+
+beta_1 <- (chain[,2]/chain[,1]) * chain[,3]
+beta_0 <- mu[,2] - mu[,1] * beta_1
+
+lmcoef
+blas <- colMeans(cbind(bcoef$mu, bcoef$beta))
+blas
+mvnmod <- colMeans(cbind(beta_0, beta_1))
+mvnmod
+
+plot(data, main="Orange tree estimates (Posterior mean)")
+abline(a=lmcoef[1], b=lmcoef[2])
+abline(a=blas[1], b=blas[2], col="blue")
+abline(a=mvnmod[1], b=mvnmod[2], col="red")
+legend("topleft", legend=c("MLE estimate", "B.Lasso", "MVN model"), col=c("black", "blue", "red"), lty=1, cex=0.8)
