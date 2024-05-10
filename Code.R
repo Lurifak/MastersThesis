@@ -172,7 +172,7 @@ metrop_samp <- function(n, m, para_len, Data_mat, mcmcsamps, target_dens, burn=5
   }
   
   ESS_mat <<- ESS_mat_holder
-  
+  accrate <<- tot_acc_post/count_post
   cat("Average acceptance post tuning probability was ", tot_acc_post/count_post, "\n")
   cat("Count Post was ", count_post, "\n")
   
@@ -711,7 +711,7 @@ plt_ex +  geom_segment(aes(x=-1, y=2, xend=1, yend=0), size=2, aes(col="darkgold
 
 #B_1 and B_2
 
-n <- 1000000
+n <- 3000
 d <- 3
 muvec<-rep(0,d)
 corrs <- corr_from_pcor(n,d)
@@ -719,19 +719,24 @@ corrs <- corr_from_pcor(n,d)
 par_mat_111 <- cbind(matrix(muvec, nrow=n, ncol=d), matrix(c(1,1,1), nrow=n, ncol=d), t(corrs))
 par_mat_122 <- cbind(matrix(muvec, nrow=n, ncol=d), cbind(rep(1, n), rep(2, n), rep(2,n)), t(corrs))
 par_mat_123 <- cbind(matrix(muvec, nrow=n, ncol=d), cbind(rep(1, n), rep(2, n), rep(3,n)), t(corrs))
-par_mat_311 <- cbind(matrix(muvec, nrow=n, ncol=d), cbind(rep(3, n), rep(1, n), rep(1,n)), t(corrs))
+par_mat_211 <- cbind(matrix(muvec, nrow=n, ncol=d), cbind(rep(2, n), rep(1, n), rep(1,n)), t(corrs))
 
 
 prior_betas_111 <- betafrommvn(par_mat_111, d)
 prior_betas_122 <- betafrommvn(par_mat_122, d)
 prior_betas_123 <- betafrommvn(par_mat_123, d)
-prior_betas_311 <- betafrommvn(par_mat_311, d)
+prior_betas_211 <- betafrommvn(par_mat_211, d)
 
 colnames(prior_betas_111) <- c("Beta_0", "Beta_1", "Beta_2")
 colnames(prior_betas_122) <- c("Beta_0", "Beta_1", "Beta_2")
 colnames(prior_betas_123) <- c("Beta_0", "Beta_1", "Beta_2")
-colnames(prior_betas_311) <- c("Beta_0", "Beta_1", "Beta_2")
+colnames(prior_betas_211) <- c("Beta_0", "Beta_1", "Beta_2")
 
+par(mfrow=c(2,2))
+plot(prior_betas_111[,2], prior_betas_111[,3], cex=0.1, ylim=c(-3,3), xlim=c(-3,3), xlab=TeX(r"($\Beta_1)"), ylab=TeX(r"($\Beta_2)"), main = expression(sigma == "[1, 1, 1]"))
+plot(prior_betas_122[,2], prior_betas_122[,3], cex=0.1, ylim=c(-3,3), xlim=c(-3,3), xlab=TeX(r"($\Beta_1)"), ylab=TeX(r"($\Beta_2)"), main = expression(sigma == "[1, 2, 2]"))
+plot(prior_betas_123[,2], prior_betas_123[,3], cex=0.1, ylim=c(-3,3), xlim=c(-3,3), xlab=TeX(r"($\Beta_1)"), ylab=TeX(r"($\Beta_2)"), main = expression(sigma == "[1, 2, 3]"))
+plot(prior_betas_211[,2], prior_betas_211[,3], cex=0.1, ylim=c(-3,3), xlim=c(-3,3), xlab=TeX(r"($\Beta_1)"), ylab=TeX(r"($\Beta_2)"), main = expression(sigma == "[2, 1, 1]"))
 
 
 plt_111 <-  ggplot(data = prior_betas_111, mapping = aes(x = Beta_1, y = Beta_2)) +
@@ -786,8 +791,8 @@ rm(list = setdiff(ls(), lsf.str()))
 set.seed(1)
 
 #1: Sample priors
-n <- 10000 #samples
-d <- 3 #dimension
+n <- 1000 #samples
+d <- 4 #dimension
 
 muvec<-rep(0,d)
 sigmavec<-rep(1,d)
@@ -797,7 +802,7 @@ corrs <- corr_from_pcor(n,d)
 
 #2 Sample Data given priors
 
-m <- 9 #how many datapoints we use to estimate the posterior sample
+m <- 20 #how many datapoints we use to estimate the posterior sample
 Data_mat<-matrix(NA, nrow=(n*m), ncol=d)
 
 
@@ -872,8 +877,7 @@ for(i in 1:m){
 }
 
 sd_est <- apply(side_by_side/n, 1, FUN=sd)
-sd_est #overestimate
-
+sd_est # (might be overestimated)
 
 seq(from=m, to=1)/(m+1) #expected
 rowMeans(side_by_side)/mcmcsamps
@@ -891,7 +895,7 @@ rm(list = setdiff(ls(), lsf.str())) #removes all variables except functions
 set.seed(1)
 
 #1.1.1: Sample n priors
-n <- 1000
+n <- 10
 d <- 3 #dimension
 
 muvec<-rep(0,d)
@@ -901,7 +905,7 @@ corrs <- corr_from_pcor(n,d)
 
 #1.1.2 Sample Data given priors
 
-m <- 70 #how many datapoints per iteration.
+m <- 30 #how many datapoints per iteration.
 holdout <- 20
 #We use m-holdout observations to fit the model and then compare
 #sample from predicted (from model) with remaining observations
@@ -1035,6 +1039,7 @@ for(i in 1:n){
   y <- Data_mat[(((i-1)*m)+1):(i*m - holdout), 1]
   X <- Data_mat[(((i-1)*m)+1):(i*m - holdout), 2:d]
   mod_obj <- blasso(X, y, thin=thinning, T=(burninit+samps), normalize=FALSE)
+  print(mod_obj$lambda2)
   betas<-mod_obj$beta[(burninit:(burninit + samps - 1)),] 
   mu_blasso<-mod_obj$mu[(burninit:(burninit + samps - 1))]
   betamat_b[((i-1)*samps+1):(i*samps),] <- cbind(mu_blasso, betas)
@@ -1125,18 +1130,17 @@ rm(list = setdiff(ls(), lsf.str())) #removes all variables except functions
 
 set.seed(1)
 
-n <- 10000
+n <- 100
 d <- 3
 p <- (d-1) #for notational purposes, denote vector (y, x_1 , ..., x_p)
-m <- 24
+m <- 27
 holdout <- 20
 
 r <- 1
 delta <- 1 
-lambda_sq <- rgamma(n, shape=delta, rate=r)
+lambda_sq <- rgamma(n, shape=r, rate=delta)
 
-sigma_sq <- 1/rgamma(n, shape=3, scale=3) 
-#inverse gamma to maintain conjugacy as stated in article
+sigma_sq <- 1 #has prior 1/sigma_sq (improper) so we fix it
 tau_sq <- matrix(NA, nrow=n, ncol=p)
 beta_samp <- matrix(NA, nrow = n, ncol = p)
 
@@ -1148,7 +1152,7 @@ for(i in 1:n){
 }
 
 for(i in 1:n){
-  beta_samp[i,] <- rmvnorm(1, rep(0, p), sigma_sq[i] * diag(tau_sq[i,]))
+  beta_samp[i,] <- rmvnorm(1, rep(0, p), sigma_sq * diag(tau_sq[i,]))
 }
 
 # Generating X
@@ -1173,7 +1177,7 @@ for(i in 1:n){
 y <- rep(NA, n*m)
 for(i in 1:(n)){
   print(i)
-  y[(1 + (i-1)*m): (i*m)] <- rmvnorm(1, mean=fulldata[(1 + ((i-1)*m)):((i*m)),] %*% beta_samp[i,], sigma_sq[i] * diag(m))
+  y[(1 + (i-1)*m): (i*m)] <- rmvnorm(1, mean=fulldata[(1 + ((i-1)*m)):((i*m)),] %*% beta_samp[i,], sigma_sq * diag(m))
 }
 
 Data_mat <- cbind(y,fulldata)
@@ -1368,7 +1372,7 @@ hist(betamat_b[,3], breaks=50, main="Beta_2")
 hist(betamat_b[,4], breaks=50, main="Beta_3")
 hist(betamat_b[,5], breaks=50, main="Beta_4")
 
-# ourmod d=3
+#ourmod d=3
 par(mfrow=c(3,3))
 hist(paramat[,1], breaks=100, main="mu_1")
 hist(paramat[,2], breaks=100, main="mu_2")
@@ -1408,7 +1412,7 @@ rm(list = setdiff(ls(), lsf.str())) #Clear variables
 set.seed(4)
 
 samps <- 100000 #number of posterior samples
-n_obs <- 10
+n_obs <- 20
 
 data <- Orange
 data <- data[,-1] #Remove type of tree from dataset
@@ -1419,40 +1423,156 @@ dim(data)
 
 lmcoef <- lm(circumference ~ age, data=data)$coefficients
 lmcoef
+thinning <- 1000
 
-bcoef <- blasso(data$age, data$circumference, T=samps, thin=10)
-colMeans(cbind(bcoef$mu, bcoef$beta)) #bayesian lasso posterior mean estimates
+bcoef <- blasso(data$age, data$circumference, T=samps/thinning, thin=thinning)
+bcoefs <- cbind(bcoef$mu, bcoef$beta)
+colMeans(bcoefs) #bayesian lasso posterior mean estimates
 
 covmat <- cov(data)
 pcorrmat <- cor2pcor(cov2cor(covmat))
 init <- c(sqrt(diag(covmat)), pcorrmat[lower.tri(pcorrmat)==TRUE])
 
-chain <- MCMCmetrop1R(improved_target_dens, theta.init=init, 
+chain <- MCMCmetrop1R(improved_target_dens, theta.init=init, thin=thinning,
                       burnin = 10000, x=data, mcmc=samps)
 colMeans(chain)
 effectiveSize(chain)
 
 #sample mu
-mu <- matrix(NA, nrow=samps, ncol=2)
-for(j in 1:samps){
-  sigmas <- c(chain[j,2], chain[j,1])
+mu <- matrix(NA, nrow=samps/thinning, ncol=2)
+beta_0 <- rep(NA, nrow=samps/thinning)
+for(j in 1:(samps/thinning)){
+  sigmas <- c(chain[j,1], chain[j,2])
   corrmat <- toeplitz(c(1,chain[j,3]))
   Sigma <- (1/n_obs) * diag(sigmas) %*% corrmat %*% diag(sigmas)
   mu[j,] <- rmvnorm(1, mean=(colMeans(data)), sigma = (Sigma))
 }
 
+betafrommvn(cbind(mu, chain), 2)
 
 beta_1 <- (chain[,2]/chain[,1]) * chain[,3]
-beta_0 <- mu[,2] - mu[,1] * beta_1
+for(j in 1:(samps/thinning)){
+  beta_0[j] <- mu[j,2] - mu[j,1] * beta_1[j]
+}
 
 lmcoef
-blas <- colMeans(cbind(bcoef$mu, bcoef$beta))
+blas <- colMeans(bcoefs)
 blas
 mvnmod <- colMeans(cbind(beta_0, beta_1))
 mvnmod
 
-plot(data, main="Orange tree estimates (Posterior mean)")
+plot(data, main="Orange tree estimates", cex=0.8)
 abline(a=lmcoef[1], b=lmcoef[2])
 abline(a=blas[1], b=blas[2], col="blue")
 abline(a=mvnmod[1], b=mvnmod[2], col="red")
-legend("topleft", legend=c("MLE estimate", "B.Lasso", "MVN model"), col=c("black", "blue", "red"), lty=1, cex=0.8)
+legend("topleft", legend=c("MLE", "B.Lasso", "MVN"), col=c("black", "blue", "red"), lty=1, cex=0.8)
+
+
+par(mfrow=c(2,2))
+plot(data, main="Regression lines, n=20", cex=1.4, xlim=c(0,2000), ylim=c(0,300), type="n", pch=19)
+for(i in 91:100){
+  abline(a=bcoefs[i,1], b=bcoefs[i,2], col="forestgreen", lwd=1.5)
+  abline(a=beta_0[i], b=beta_1[i], col="goldenrod3", lwd=1.5)
+}
+points(data, pch=19)
+
+##############################################################################
+#Check of equivariance properties
+##############################################################################
+
+#Scale
+
+rm(list = setdiff(ls(), lsf.str())) #Clear variables
+
+set.seed(3)
+testdata <- matrix(rnorm(36), nrow=12)
+testdata
+
+c <- 10 #scaling
+d <- 3 #dimension
+
+testdata2 <- testdata
+testdata2[,1] <- testdata[,1] * c
+
+params <- metrop_samp(2, 12, 9, rbind(testdata, testdata2), 10000, 
+                            improved_target_dens, burn=10000, holdout=0)
+ESS_mat #good convergence
+
+betamat <- betafrommvn(pcors_to_corrs(params, 3), 3)
+
+
+params1 <- betamat[1:10000,]
+params2 <- betamat[10001:20000,]
+
+params1 <- params1 * c
+
+#Should be equal
+summary(params1) #non intercept terms all super close to scale invariance, intercept almost so
+summary(params2)
+
+#Regression equivariance (data: (Y + Xv, X))
+
+rm(list = setdiff(ls(), lsf.str())) #Clear variables
+
+set.seed(3)
+
+d <- 3
+v <- c(1,4)
+
+testdata <- matrix(rnorm(36), nrow=12)
+
+testdata2 <- testdata
+testdata2[,1] <- testdata[,1] + testdata[,2:3] %*% v
+
+
+params <- metrop_samp(2, 12, 9, rbind(testdata, testdata2), 10000, 
+                      improved_target_dens, burn=100000, holdout=0)
+
+ESS_mat #good convergence
+
+betamat <- betafrommvn(pcors_to_corrs(params, 3), 3)
+
+
+params1 <- betamat[1:10000,] 
+params2 <- betamat[10001:20000,]
+
+params1[,2:3] <- params1[,2:3] + cbind(rep(v[1], 10000), rep(v[2], 10000))
+
+#Should be equal
+summary(params1) #not equal
+summary(params2)
+
+#Affine equivariance (data: (Y , XA))
+
+rm(list = setdiff(ls(), lsf.str())) #Clear variables
+
+d <- 3 #dimension
+A <- matrix(c(1,1,1,2), nrow=2)
+
+set.seed(3)
+
+testdata <- matrix(rnorm(36), nrow=12)
+
+
+testdata2 <- testdata
+testdata2[,2:3] <- testdata[,2:3] + testdata[,2:3] %*% A
+
+
+params <- metrop_samp(2, 12, 9, rbind(testdata, testdata2), 10000, 
+                      improved_target_dens, burn=10000, holdout=0)
+
+ESS_mat
+
+betamat <- betafrommvn(pcors_to_corrs(params, 3), 3)
+
+
+params1 <- betamat[1:10000,] 
+params2 <- betamat[10001:20000,]
+
+params1[,2:3] <- solve(A) %*% t(params1[,2:3])
+
+#Should be equal
+summary(params1) #not equal
+summary(params2)
+
+
