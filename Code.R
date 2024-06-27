@@ -1,3 +1,5 @@
+#Loading packages
+
 library(MCMCpack)
 library(mvtnorm)
 library(corpcor)
@@ -11,6 +13,8 @@ library(gridExtra)
 library(datasets)
 
 
+
+#Function for adjusting tuning parameter in MCMCpack as a function of acceptance probability
 tune_adjust<-function(a_prob){
   if(a_prob>0.25){
     4*(a_prob-0.25) + 1
@@ -18,8 +22,6 @@ tune_adjust<-function(a_prob){
       3 * (a_prob) +  1/4
   }
 }
-
-#test 2 using parametrization p(sigma) = 1/sigma
 
 improved_target_dens <- function(theta,x){
   L <- length(theta)
@@ -239,6 +241,8 @@ alg<-function(datamat, nsamples){
   return(cbind(samp_rho, samp_sigma1, samp_sigma2, mu[,1], mu[,2]))
 }
 
+
+#Function to sample realizations of x given parameters for the bivariate normal
 xsim <- function(thetamat, nsims){
   n <- nrow(thetamat)
   x <- rep(NA, (n*nsims))
@@ -298,7 +302,6 @@ holdout_x <- rep(NA, (n*holdout))
 holdout_y <- rep(NA, (n*holdout))
 
 for(i in 1:n){
-  print(i)
   Sigma <- matrix(data=c(sigma_1^2, sigma_1*sigma_2*rho[i], sigma_1*sigma_2*rho[i], sigma_2^2), nrow=2)
   a <- rmvnorm((m+holdout), mean=meanvec, sigma=Sigma)
   y[((i-1)*m + 1): ((i-1)*m + m)] <- a[1:m, 1]
@@ -319,7 +322,6 @@ residvec <- rep(NA, n*holdout)
 paramat <- matrix(NA, nrow=parasims*n, ncol=5)
 
 for (i in 1:(n)){
-  print(i)
   newdata <- z[((i-1)*m + 1): (i*m),] #Block of m of the data for each iteration
   wadup <- alg(newdata, parasims) #simulating parameters for this block
   x_sim <- xsim(wadup, predsims) #simulating x
@@ -350,6 +352,8 @@ tot_comb<-n*parasims*predsims
 count/tot_comb #amount of y_pred_n+1 above each observed y_i up to n
 seq(from=1/(m+1), to=m/(m+1), by=1/(m+1)) #Expected under t dist
 
+
+#Plots
 par(mfrow=c(1,2))
 hist(betas[,1], main="Beta_0")
 hist(betas[,2], main="Beta_1")
@@ -895,8 +899,8 @@ rm(list = setdiff(ls(), lsf.str())) #removes all variables except functions
 set.seed(1)
 
 #1.1.1: Sample n priors
-n <- 10
-d <- 3 #dimension
+n <- 10000
+d <- 4 #dimension
 
 muvec<-rep(0,d)
 sigmavec<-rep(1,d)
@@ -905,7 +909,7 @@ corrs <- corr_from_pcor(n,d)
 
 #1.1.2 Sample Data given priors
 
-m <- 30 #how many datapoints per iteration.
+m <- 60 #how many datapoints per iteration.
 holdout <- 20
 #We use m-holdout observations to fit the model and then compare
 #sample from predicted (from model) with remaining observations
@@ -913,6 +917,7 @@ holdout <- 20
 Data_mat<-matrix(NA, nrow=(n*m), ncol=d)
 mth_obs<-matrix(NA, nrow = (n*holdout), ncol=d) #holdout observations
 
+#Generate data
 for(i in 1:n){
   corrmat <- diag(1, nrow=d)
   corrmat[lower.tri(corrmat)==TRUE] <- corrs[,i]
@@ -927,7 +932,6 @@ for(i in 1:n){
     Data_mat[((i-1)*m+1):(i*m),j] <- (Data_mat[((i-1)*m+1):(i*m),j] - mean(Data_mat[((i-1)*m+1):(i*m),j]))/sd(Data_mat[((i-1)*m+1):(i*m),j])
   }
 }
-
 
 for(i in 1:n){
   mth_obs[((i-1)*holdout+1):(i*holdout),]<-Data_mat[((i*m) - (holdout-1)):(i*m),]
@@ -1039,7 +1043,6 @@ for(i in 1:n){
   y <- Data_mat[(((i-1)*m)+1):(i*m - holdout), 1]
   X <- Data_mat[(((i-1)*m)+1):(i*m - holdout), 2:d]
   mod_obj <- blasso(X, y, thin=thinning, T=(burninit+samps), normalize=FALSE)
-  print(mod_obj$lambda2)
   betas<-mod_obj$beta[(burninit:(burninit + samps - 1)),] 
   mu_blasso<-mod_obj$mu[(burninit:(burninit + samps - 1))]
   betamat_b[((i-1)*samps+1):(i*samps),] <- cbind(mu_blasso, betas)
@@ -1075,6 +1078,10 @@ mean(infomat_b[,3]^2)
 
 mean(infomat[,5])
 mean(infomat_b[,5])
+
+accrate
+quantile(ESS_mat_red, 0.01)
+n_1
 
 par(mfrow=c(2,1))
 hist(infomat[,3], breaks=100)
@@ -1130,10 +1137,10 @@ rm(list = setdiff(ls(), lsf.str())) #removes all variables except functions
 
 set.seed(1)
 
-n <- 100
-d <- 3
+n <- 10000
+d <- 4
 p <- (d-1) #for notational purposes, denote vector (y, x_1 , ..., x_p)
-m <- 27
+m <- 60
 holdout <- 20
 
 r <- 1
@@ -1331,10 +1338,14 @@ for(i in 1:n_1){
 
 infomat[,5] <- infomat[,3]^2 - infomat[,4]^2
 
-
+mean(infomat[,3]^2)
 mean(infomat[,5])
 mean(infomat_b[,5])
 
+
+accrate
+n_1
+quantile(ESS_mat_red, 0.01)
 #plots
 
 #betamat d=3
@@ -1412,11 +1423,11 @@ rm(list = setdiff(ls(), lsf.str())) #Clear variables
 set.seed(4)
 
 samps <- 100000 #number of posterior samples
-n_obs <- 20
+n_obs <- 22
 
 data <- Orange
 data <- data[,-1] #Remove type of tree from dataset
-data <- data[sample(35,n_obs),] #pick n_obs observations
+data <- data[sample(35,n_obs),] #select n_obs observations for estimating parameters
 
 summary(data)
 dim(data)
@@ -1447,8 +1458,6 @@ for(j in 1:(samps/thinning)){
   Sigma <- (1/n_obs) * diag(sigmas) %*% corrmat %*% diag(sigmas)
   mu[j,] <- rmvnorm(1, mean=(colMeans(data)), sigma = (Sigma))
 }
-
-betafrommvn(cbind(mu, chain), 2)
 
 beta_1 <- (chain[,2]/chain[,1]) * chain[,3]
 for(j in 1:(samps/thinning)){
@@ -1507,7 +1516,7 @@ params2 <- betamat[10001:20000,]
 params1 <- params1 * c
 
 #Should be equal
-summary(params1) #non intercept terms all super close to scale invariance, intercept almost so
+summary(params1) #non intercept scale invariant, intercept almost so
 summary(params2)
 
 #Regression equivariance (data: (Y + Xv, X))
@@ -1576,3 +1585,53 @@ summary(params1) #not equal
 summary(params2)
 
 
+################################################################
+
+rm(list = setdiff(ls(), lsf.str()))
+
+d <- 3
+samps <- 10000
+
+
+data <- rbind(c(0,0), c(1,0), c(0,1), c(1,1))
+data
+
+
+bcoef <- blasso(data[,1], data[,2], T=samps, thin=10)
+bcoefs <- cbind(bcoef$mu, bcoef$beta)
+par(mfrow=c(1,2))
+hist(bcoefs[,1], breaks=50)
+hist(bcoefs[,2], breaks=50)
+
+colMeans(bcoefs) #bayesian lasso posterior mean estimates
+
+covmat <- cov(data)
+pcorrmat <- cor2pcor(cov2cor(covmat))
+init <- c(sqrt(diag(covmat)), pcorrmat[lower.tri(pcorrmat)==TRUE])
+
+chain <- MCMCmetrop1R(improved_target_dens, theta.init=init, thin=10,
+                      burnin = 10000, x=data, mcmc=samps*10)
+colMeans(chain)
+effectiveSize(chain)
+
+#sample mu
+mu <- matrix(NA, nrow=samps, ncol=2)
+beta_0 <- rep(NA, nrow=samps)
+for(j in 1:(samps)){
+  sigmas <- c(chain[j,1], chain[j,2])
+  corrmat <- toeplitz(c(1,chain[j,3]))
+  Sigma <- (1/4) * diag(sigmas) %*% corrmat %*% diag(sigmas)
+  mu[j,] <- rmvnorm(1, mean=(colMeans(data)), sigma = (Sigma))
+}
+
+beta_1 <- (chain[,2]/chain[,1]) * chain[,3]
+for(j in 1:(samps)){
+  beta_0[j] <- mu[j,2] - mu[j,1] * beta_1[j]
+}
+
+
+par(mfrow=c(2,2))
+hist(beta_0, breaks=50, xlim=c(-5,5))
+hist(beta_1, breaks=50, xlim=c(-5,5))
+hist(bcoefs[,1], breaks=50, xlim=c(-5,5))
+hist(bcoefs[,2], breaks=50, xlim=c(-5,5))
