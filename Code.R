@@ -1,5 +1,4 @@
 #Loading packages
-
 library(MCMCpack)
 library(mvtnorm)
 library(corpcor)
@@ -23,6 +22,8 @@ tune_adjust<-function(a_prob){
   }
 }
 
+
+# Expression proportional to posterior of covariance matrix in eq. 3.3
 improved_target_dens <- function(theta,x){
   L <- length(theta)
   Samp_cov <- cov(x)
@@ -37,7 +38,7 @@ improved_target_dens <- function(theta,x){
     parcorrmat[lower.tri(parcorrmat)==TRUE] <- parcorrs
     parcorrmat <- parcorrmat + t(parcorrmat) - diag(diag(parcorrmat))
     
-    if((sum(eigen(parcorrmat)$val<0)==d)){ # if partial corr mat is negative definite <=> corrmat positive def
+    if((sum(eigen(parcorrmat)$val<0)==d)){ # if partial corr mat is negative definite => Corr. mat positive def
       
       Sigma_inv <- solve(diag(sigma) %*% pcor2cor(parcorrmat+diag(2, nrow=d)) %*% diag(sigma)) #pcor2cor defines p. corr mat having unit diagonal instead of negative unit diag
       -((n-1)/2) * (log(1/det(Sigma_inv)) + sum(diag(Sigma_inv %*% Samp_cov))) - sum(log(sigma))
@@ -47,8 +48,11 @@ improved_target_dens <- function(theta,x){
   }
 }
 
-betafrommvn <- function(PMat, d){ #PMAt = parameter matrix, d = dim of mvn vector
-  #Assumed rows in PMat: mu_s, sigmas and corrs
+#Function for transforming MVN variables to Regression coefficients
+
+#PMAt = parameter matrix, d = dim of mvn vector
+#Assumed rows in PMat: mu_s, sigmas and corrs
+betafrommvn <- function(PMat, d){
   n <- nrow(PMat)
   len <- ncol(PMat)
   betas <- matrix(NA, nrow=n, ncol=d)
@@ -68,6 +72,8 @@ betafrommvn <- function(PMat, d){ #PMAt = parameter matrix, d = dim of mvn vecto
   betas
 }
 
+
+#Generating correlations from uniform marginals on partial correlation matrix
 corr_from_pcor<-function(n, d){
   Sigma <- - diag(d)
   replicate(n,{
@@ -85,6 +91,12 @@ corr_from_pcor<-function(n, d){
   })
 }
 
+
+#Sampling from full posterior of posterior in Eq. 3.4 given data
+#Variables: n is amount of chains
+# m is amount of observed values per chain
+# Data_mat is the matrix of the response and the design matrix
+# holdout is amount of samples to not use to fit the model 
 metrop_samp <- function(n, m, para_len, Data_mat, mcmcsamps, target_dens, burn=500, holdout=0){
   paramat <- matrix(NA, nrow=n*mcmcsamps, ncol=para_len)
   if(holdout==0){
@@ -115,6 +127,7 @@ metrop_samp <- function(n, m, para_len, Data_mat, mcmcsamps, target_dens, burn=5
     ess_test <- rep(1, (d) + (d)*(d-1)/2)
     
     #test-chain
+    #sink captures acceptance rate string printed
     
     tryCatch({
       
@@ -135,6 +148,7 @@ metrop_samp <- function(n, m, para_len, Data_mat, mcmcsamps, target_dens, burn=5
     
     sink()
     
+    #full chain
     
     tryCatch({
       
@@ -201,8 +215,8 @@ pcors_to_corrs<-function(paramat, d){
 }
 
 
-#Berger & Sun 2008, Accept-Reject bivariate normal
-alg<-function(datamat, nsamples){
+#Berger & Sun 2008, Accept-Reject bivariate normal described in their article
+Sun_reject<-function(datamat, nsamples){
   x <- t(datamat)
   n <- ncol(x)
   s11 <- sum((x[1,] - mean(x[1,]))^2)
@@ -210,7 +224,7 @@ alg<-function(datamat, nsamples){
   s12 <- sum( t(x[1,] - mean(x[1,])) %*% (x[2,] - mean(x[2,])) )
   mean_1<-mean(x[1,])
   mean_2<-mean(x[2,])
-  S_mat <- matrix(data=c(s11,s12,s12,s22), nrow=2)
+  S_mat <- matrix(data=c(s11,s12,s12,s22), nrow=2) #Sample covariance
   
   samp_rho<-c()
   samp_sigma1<-c()
@@ -232,9 +246,9 @@ alg<-function(datamat, nsamples){
     }
   }
   
-  rhoest<-mean(samp_rho) #why am i taking the mean??
-  sigma1est<-mean(samp_sigma1) #update: just set nsamp to 1
-  sigma2est<-mean(samp_sigma2)
+  rhoest<-samp_rho
+  sigma1est<-samp_sigma1
+  sigma2est<-samp_sigma2
   Sigma<-matrix(data=c(sigma1est^2, rhoest*sigma1est*sigma2est, rhoest*sigma1est*sigma2est, sigma2est^2), nrow=2)
   mu<-rmvnorm(nsamples, c(mean_1, mean_2), sigma=Sigma/nsamples)
   
@@ -247,11 +261,13 @@ xsim <- function(thetamat, nsims){
   n <- nrow(thetamat)
   x <- rep(NA, (n*nsims))
   for(i in 1:n){
-    x[((i-1)*nsims + 1):(i*nsims)] <- rnorm(nsims, mean=wadup[i,5], sd=wadup[i,3])
+    x[((i-1)*nsims + 1):(i*nsims)] <- rnorm(nsims, mean=para_sims[i,5], sd=para_sims[i,3])
   }
   x
 }
 
+
+#Function to sample realizations of y given parameters, x for the bivariate normal
 ysim<-function(theta, x){
   n <- nrow(theta)
   L <- length(x)
@@ -281,7 +297,7 @@ rm(list = setdiff(ls(), lsf.str())) #Clear variables
 #Sample rho and other parameters
 set.seed(1)
 
-n<-10000
+n<-100
 
 rho<-runif(n, -0.99, 0.99)
 
@@ -295,7 +311,7 @@ sigma_2 <- 1
 meanvec<-c(mu_1, mu_2)
 m <- 5
 holdout <- 2
-t <- m + holdout
+t <- m + holdout #total samples
 y<-rep(NA, (n*m))
 x<-rep(NA, (n*m))
 holdout_x <- rep(NA, (n*holdout))
@@ -323,9 +339,9 @@ paramat <- matrix(NA, nrow=parasims*n, ncol=5)
 
 for (i in 1:(n)){
   newdata <- z[((i-1)*m + 1): (i*m),] #Block of m of the data for each iteration
-  wadup <- alg(newdata, parasims) #simulating parameters for this block
-  x_sim <- xsim(wadup, predsims) #simulating x
-  y_x <- ysim(wadup, x_sim)  #simulating y conditional on x
+  para_sims <- Sun_reject(newdata, parasims) #simulating parameters for this block
+  x_sim <- xsim(para_sims, predsims) #simulating x
+  y_x <- ysim(para_sims, x_sim)  #simulating y conditional on x
   
   sorted <- sort(newdata[,1], decreasing=TRUE)
   
@@ -334,15 +350,15 @@ for (i in 1:(n)){
   }
   
   hold <- cbind(holdout_y[((i-1)*holdout + 1):(i*holdout)], holdout_x[((i-1)*holdout + 1):(i*holdout)])
-  y_sim <- ysim(wadup, hold[,2])
+  y_sim <- ysim(para_sims, hold[,2])
   
   for(k in 1:holdout){
     residvec[(i-1)*(holdout) + k] <- y_sim[k] - hold[k,1]
   }
   
-  paramat[((i-1)*parasims + 1): (i*parasims),1:2] <- wadup[,4:5]
-  paramat[((i-1)*parasims + 1): (i*parasims),3:4] <- wadup[,2:3]
-  paramat[((i-1)*parasims + 1): (i*parasims),5] <- wadup[,1]
+  paramat[((i-1)*parasims + 1): (i*parasims),1:2] <- para_sims[,4:5]
+  paramat[((i-1)*parasims + 1): (i*parasims),3:4] <- para_sims[,2:3]
+  paramat[((i-1)*parasims + 1): (i*parasims),5] <- para_sims[,1]
   
 }
 
@@ -352,12 +368,6 @@ tot_comb<-n*parasims*predsims
 count/tot_comb #amount of y_pred_n+1 above each observed y_i up to n
 seq(from=1/(m+1), to=m/(m+1), by=1/(m+1)) #Expected under t dist
 
-
-#Plots
-par(mfrow=c(1,2))
-hist(betas[,1], main="Beta_0")
-hist(betas[,2], main="Beta_1")
-
 par(mfrow=c(2,3))
 hist(paramat[,1], main="mu_1")
 hist(paramat[,2], main="mu_2")
@@ -365,353 +375,7 @@ hist(paramat[,3], main="sigma_1", breaks=30, xlim=c(0,10))
 hist(paramat[,4], main="sigma_2", breaks=30, xlim=c(0,10))
 hist(paramat[,5], main="rho")
 
-
-#############################################################################################
-### Diagnostics (compute ESS, trace plots, etc... to determine tuning, burnin)
-#############################################################################################
-
-
-# First we determine tuning parameter 'tune' in mcmcmetrop1r
-
-# We have 2 steps: first determine norm of tuning vector, 
-# then determine weight between marginal variances and p. correlations
-# measured by how well our ESS is
-
-# 1: Pregenerating data from correlations near edge of parameter space
-# i.e. partial corrs will also lie close to parameter space
-
-
-
-rm(list = setdiff(ls(), lsf.str()))
-
-set.seed(1)
-
-
-samp_corrs <- corr_from_pcor(20000, 3)
-
-# 1.1 pick out m observations close to parameter edge
-
-d <- 3
-j <- 0
-i <- 0
-m <- 1000
-par_list <- list()
-while((j<m) & (i<5000)){
-  i <- i + 1
-  corrmat <- diag(1, nrow=d)
-  corrmat[lower.tri(corrmat)==TRUE] <- samp_corrs[,i]
-  corrmat <- corrmat + t(corrmat) - diag(diag(corrmat))
-  if((any(abs(eigen(corrmat)$values) < 10^(-1))) & (any(abs(eigen(corrmat)$values) > 10^(-2)))){
-    par_list[[j+1]] <- corrmat
-    j <- j+1
-  }
-}
-
-par_list #all correlations near edge of parameter space
-
-n_obs <- 4
-
-data_list <- list()
-for(i in 1:m){
-  data_list[[i]] <- rmvnorm(n_obs,mean=rep(0,d), sigma=par_list[[i]])
-}
-
-# 1.2 checking best absolute tune param size
-
-n_tune_vec <- 5
-tot_ESS <- matrix(0, nrow=n_tune_vec, ncol=2*d)
-
-for(i in 1:n_tune_vec){
-  tune_vec <- 1/4 + i/4  #1/2, 3/4, 1, ... for each tuning param
-  for(j in 1:m){
-    #Determining initialization cheaply
-    covmat <- cov(data_list[[j]])
-    pcorrmat <- cor2pcor(cov2cor(covmat))
-    init <- c(sqrt(diag(covmat)), pcorrmat[lower.tri(pcorrmat)==TRUE])
-    
-    tryCatch({
-      chain <- MCMCmetrop1R(improved_target_dens, theta.init=init, 
-                          burnin = 1000, x=data_list[[j]],tune=tune_vec, mcmc=1000)
-    
-      tot_ESS[i,] <- tot_ESS[i,] + effectiveSize(chain)
-    }, error=function(e){})
-  }
-}
-
-tot_ESS
-rowMeans(tot_ESS)  #tune=1 seems best
-
-#Checking increasing tuning parameter for marginal variances
-
-tot_ESS <- matrix(0, nrow=n_tune_vec, ncol=2*d)
-
-for(i in 1:n_tune_vec){
-  tune_vec <- c((rep(1/4, d) + (rep(1/4,d) * (i))), rep(1,d))
-  for(j in 1:m){
-    #Determining initialization cheaply
-    covmat <- cov(data_list[[j]])
-    pcorrmat <- cor2pcor(cov2cor(covmat))
-    init <- c(sqrt(diag(covmat)), pcorrmat[lower.tri(pcorrmat)==TRUE])
-    
-    tryCatch({
-      chain <- MCMCmetrop1R(improved_target_dens, theta.init=init, 
-                            burnin = 1000, x=data_list[[j]], tune=tune_vec, mcmc=1000)
-      
-      tot_ESS[i,] <- tot_ESS[i,] + effectiveSize(chain)
-    }, error=function(e){})
-  }
-}
-
-tot_ESS
-rowMeans(tot_ESS) #tuning params for sigmas = 3/4 best seemingly (tested for m=100, 2 seeds)
-
-#Checking tuning parameter for partial correlations
-
-tot_ESS <- matrix(0, nrow=n_tune_vec, ncol=2*d)
-
-for(i in 1:n_tune_vec){
-  tune_vec <- c(rep(1, d), (rep(1/4, d) + (rep(1/4,d) * (i))))
-  for(j in 1:m){
-    #Determining initialization cheaply
-    covmat <- cov(data_list[[j]])
-    pcorrmat <- cor2pcor(cov2cor(covmat))
-    init <- c(sqrt(diag(covmat)), pcorrmat[lower.tri(pcorrmat)==TRUE])
-    
-    tryCatch({
-      chain <- MCMCmetrop1R(improved_target_dens, theta.init=init, 
-                            burnin = 1000, x=data_list[[j]],tune=tune_vec, mcmc=1000)
-      
-      tot_ESS[i,] <- tot_ESS[i,] + effectiveSize(chain)
-    }, error=function(e){})
-  }
-}
-
-tot_ESS
-rowMeans(tot_ESS)
-
-
-#Testing adapting tuning by ESS
-tot_ESS_tune <- matrix(0, nrow=m, ncol=2*d)
-tot_ESS <- matrix(0, nrow=m, ncol=2*d)
-
-
-for(j in 1:m){
-  #Determining initialization cheaply
-  covmat <- cov(data_list[[j]])
-  pcorrmat <- cor2pcor(cov2cor(covmat))
-  init <- c(sqrt(diag(covmat)), pcorrmat[lower.tri(pcorrmat)==TRUE])
-    
-  tryCatch({
-    testchain <- MCMCmetrop1R(improved_target_dens, theta.init=init, 
-                              burnin = 500, x=data_list[[j]], mcmc=200)
-    
-    ess <- effectiveSize(testchain)
-    tot <- sum(ess)
-    tune_corrected <- c(rep(1,d) * sum(ess[1:d])/tot, rep(1,d) * sum(ess[(d+1):(2*d)])/tot)
-    
-    chain_tuned <- MCMCmetrop1R(improved_target_dens, theta.init=init,
-                                burnin = 500, x=data_list[[j]],tune=tune_corrected, mcmc=2000)
-    
-    chain <- MCMCmetrop1R(improved_target_dens, theta.init=init, 
-                            burnin = 500, x=data_list[[j]], mcmc=2000)
-      
-    tot_ESS_tune[j,] <- effectiveSize(chain_tuned)
-    tot_ESS[j,] <- effectiveSize(chain)
-    
-  }, error=function(e){})
-}
-
-tot_ESS_tune
-tot_ESS
-colMeans(tot_ESS_tune)
-colMeans(tot_ESS)
-
-
-
-#calculating intialization
-set.seed(3)
-examp_data <- rmvnorm(4, mean=rep(0,d), sigma = diag(1, nrow=3))
-
-covmat <- cov(examp_data)
-pcorrmat <- cor2pcor(cov2cor(covmat))
-init_3 <- c(sqrt(diag(covmat)), pcorrmat[lower.tri(pcorrmat)==TRUE])
-init_3
-
-
-
-diagnostic_obj_3 <- MCMCmetrop1R(improved_target_dens, theta.init=init_3, 
-                                 burnin = 1000, x=examp_data,tune=c(1,1,1,1,10,1), 
-                                 mcmc=20000)
-
-sink(file="test.txt")
-
-sink()
-
-out <- readLines("test.txt")
-
-# Extract the number using regex
-numbers <- regmatches(out, regexpr(pattern, out))
-
-# Convert the extracted number to numeric
-numbers <- as.numeric(numbers)
-
-# Print the extracted number
-print(numbers)
-
-effectiveSize(diagnostic_obj_3)
-
-set.seed(7)
-
-examp_data <- rmvnorm(4, mean=rep(0,d), sigma = par_list[[14]])
-
-covmat <- cov(examp_data)
-pcorrmat <- cor2pcor(cov2cor(covmat))
-cov2cor(covmat)
-init_3 <- c(sqrt(diag(covmat)), pcorrmat[lower.tri(pcorrmat)==TRUE])
-init_3
-
-
-for(i in 1:100){
-  diagnostic_obj_3 <- MCMCmetrop1R(improved_target_dens, theta.init=init_3, 
-                                 burnin = 500, seed=i,x=examp_data, tune=1, 
-                                 mcmc=200)
-}
-
-ø <- MCMCmetrop1R(improved_target_dens, theta.init=init_3, 
-             burnin = 500, seed=6,x=examp_data, tune=1, 
-             mcmc=10000)
-
-a <- effectiveSize(diagnostic_obj_3)
-a
-
-diagnostic_obj <- MCMCmetrop1R(improved_target_dens, theta.init=init_3, 
-                                 burnin = 500, x=examp_data, tune=0.32/0.25, 
-                                 mcmc=3000)
-
-b <- effectiveSize(diagnostic_obj)
-b
-sum(a)
-sum(b)
-
-
-
-
-plot(diagnostic_obj_3) #trace plots convincing for m >= d + 1
-
-batchSE(as.mcmc(cbind(diagnostic_obj_3, rep(1, 100000))))
-
-diagnostic_obj_4 <- MCMCmetrop1R(improved_target_dens, theta.init=c(rep(1,4), rep(0,6)), 
-                                 burnin = 1,
-                                 x=rmvnorm(10, mean=rep(0,4), sigma=diag(rep(1,4))), 
-                                 mcmc=10000)
-
-effectiveSize(diagnostic_obj_4)
-
-plot(diagnostic_obj_4)
-
-diagnostic_obj_5 <- MCMCmetrop1R(improved_target_dens, theta.init=c(rep(1,5), rep(0,10)), 
-                                 burnin = 1,
-                                 x=rmvnorm(6, mean=rep(0,5), sigma=diag(rep(1,5))),
-                                   mcmc=100000)
-
-effectiveSize(diagnostic_obj_5)
-
-plot(diagnostic_obj_5)
-
 #Visualizing betas for our prior
-
-#In general
-n <- 500000
-mvnmat <- matrix(NA, nrow=n, ncol=5)
-for(i in 1:n){
-  mvnmat[i,1:2] <- c(runif(1, -10, 10), runif(1, -10, 10))
-  mvnmat[i,3:4] <- c(rgamma(1, 0.01, 0.01), rgamma(1, 0.01, 0.01))
-  mvnmat[i,5] <- runif(1, -1, 1)
-}
-
-mvnmat_11 <- cbind(mvnmat[,1:2], cbind(rep(1,n), rep(1,n)), mvnmat[,5])
-mvnmat_21 <- cbind(mvnmat[,1:2], cbind(rep(2,n), rep(1,n)), mvnmat[,5])
-mvnmat_12 <- cbind(mvnmat[,1:2], cbind(rep(1,n), rep(2,n)), mvnmat[,5])
-mvnmat_22 <- cbind(mvnmat[,1:2], cbind(rep(5,n), rep(1,n)), mvnmat[,5])
-
-betas_11 <- betafrommvn(mvnmat_11, 2)
-betas_12 <- betafrommvn(mvnmat_12, 2)
-betas_21 <- betafrommvn(mvnmat_21, 2)
-betas_22 <- betafrommvn(mvnmat_22, 2)
-
-colnames(betas_11) <- c("Beta_0", "Beta_1")
-colnames(betas_12) <- c("Beta_0", "Beta_1")
-colnames(betas_21) <- c("Beta_0", "Beta_1")
-colnames(betas_22) <- c("Beta_0", "Beta_1")
-
-
-plt_11_dens <-  ggplot(data = betas_11, mapping = aes(x = Beta_0, y = Beta_1)) +
-  xlim(-20, 20) + ylim(-2,2) + xlab(TeX(r"($\Beta_0)")) + ylab(TeX(r"($\Beta_1)")) +
-  stat_density_2d(geom = "raster",aes(fill = after_stat(density)),contour = FALSE) + 
-  scale_fill_viridis_c(option="turbo")
-
-plt_12_dens <-  ggplot(data = betas_12, mapping = aes(x = Beta_0, y = Beta_1)) +
-  xlim(-15, 15) + ylim(-1,1) + xlab(TeX(r"($\Beta_0)")) + ylab(TeX(r"($\Beta_1)")) +
-  stat_density_2d(geom = "raster",aes(fill = after_stat(density)),contour = FALSE) + 
-  scale_fill_viridis_c(option="turbo")
-
-plt_21_dens <-  ggplot(data = betas_21, mapping = aes(x = Beta_0, y = Beta_1)) +
-  xlim(-30, 30) + ylim(-2,2) + xlab(TeX(r"($\Beta_0)")) + ylab(TeX(r"($\Beta_1)")) +
-  stat_density_2d(geom = "raster",aes(fill = after_stat(density)),contour = FALSE) + 
-  scale_fill_viridis_c(option="turbo")
-
-plt_22_dens <-  ggplot(data = betas_22, mapping = aes(x = Beta_0, y = Beta_1)) +
-  xlim(-50, 50) + ylim(-5,5) + xlab(TeX(r"($\Beta_0)")) + ylab(TeX(r"($\Beta_1)")) +
-  stat_density_2d(geom = "raster",aes(fill = after_stat(density)),contour = FALSE) + 
-  scale_fill_viridis_c(option="turbo")
-
-grid.arrange(plt_11_dens, plt_12_dens, plt_21_dens, plt_22_dens, ncol=2, nrow=2)
-
-#B_0 and B_1
-
-n <- 10000
-
-rho <- runif(n, -1, 1)
-params_1 <- cbind(0, 1, 1, 1, rho) #mu_y, mu_x, s_y, s_x, rho
-params_2 <- cbind(1, 2, 1, 1, rho)
-params_3 <- cbind(1, 1, 2, 1, rho)
-params_4 <- cbind(1, 1, 2, 2, rho)
-
-prior_beta_1 <- betafrommvn(params_1,2)
-prior_beta_2 <- betafrommvn(params_2,2)
-prior_beta_3 <- betafrommvn(params_3,2)
-prior_beta_4 <- betafrommvn(params_4,2)
-
-colnames(prior_beta_1) <- c("Beta_0", "Beta_1")
-colnames(prior_beta_2) <- c("Beta_0", "Beta_1")
-colnames(prior_beta_3) <- c("Beta_0", "Beta_1")
-colnames(prior_beta_4) <- c("Beta_0", "Beta_1")
-
-plt_1 <-  ggplot(data = prior_beta_1, mapping = aes(x = Beta_0, y = Beta_1)) +
-  xlim(-6, 6) + ylim(-6,6) + xlab(TeX(r"($\Beta_0)")) + ylab(TeX(r"($\Beta_1)")) +
-  geom_hex(bins=150) + scale_fill_continuous(type = "viridis")
-
-plt_2 <-  ggplot(data = prior_beta_2, mapping = aes(x = Beta_0, y = Beta_1)) +
-  xlim(-6, 6) + ylim(-6,6) + xlab(TeX(r"($\Beta_0)")) + ylab(TeX(r"($\Beta_1)")) +
-  geom_hex(bins=150) + scale_fill_continuous(type = "viridis")
-
-x<-rnorm(20)
-y<-rnorm(20,1,0.5)
-df<-data.frame(x,y)
-
-
-colors <- c("Sepal Width" = "blue", "Petal Length" = "red", "Petal Width" = "orange")
-
-plt_ex <-  ggplot(df,aes(x,y)) + 
-  xlim(-1.1, 1.1) + ylim(-2.1,4.1) + xlab(TeX(r"($\rho)")) + ylab(" ")
-
-plt_ex +  geom_segment(aes(x=-1, y=2, xend=1, yend=0), size=2, aes(col="darkgoldenrod1")) + 
-  geom_segment(aes(x=-1, y=-1, xend=1, yend=1), size=2, col="darkorange") + 
-  geom_segment(aes(x=-1, y=4, xend=1, yend=0), size=2, col="chartreuse") + 
-  geom_segment(aes(x=-1, y=-2, xend=1, yend=2), size=2, col="chartreuse4") + 
-  scale_color_manual(name='Regression Model',
-                     breaks=c('Linear', 'Quadratic', 'Cubic'),
-                     values=c('Cubic'='pink', 'Quadratic'='blue', 'Linear'='purple'))
 
 #B_1 and B_2
 
@@ -743,50 +407,8 @@ plot(prior_betas_123[,2], prior_betas_123[,3], cex=0.1, ylim=c(-3,3), xlim=c(-3,
 plot(prior_betas_211[,2], prior_betas_211[,3], cex=0.1, ylim=c(-3,3), xlim=c(-3,3), xlab=TeX(r"($\Beta_1)"), ylab=TeX(r"($\Beta_2)"), main = expression(sigma == "[2, 1, 1]"))
 
 
-plt_111 <-  ggplot(data = prior_betas_111, mapping = aes(x = Beta_1, y = Beta_2)) +
-  xlim(-6, 6) + ylim(-6,6) + xlab(TeX(r"($\Beta_1)")) + ylab(TeX(r"($\Beta_2)")) +
-  geom_hex(bins=150) + scale_fill_continuous(type = "viridis")
-
-plt_122 <-  ggplot(data = prior_betas_122, mapping = aes(x = Beta_1, y = Beta_2)) +
-  xlim(-6, 6) + ylim(-6,6) + xlab(TeX(r"($\Beta_1)")) + ylab(TeX(r"($\Beta_2)")) +
-  geom_hex(bins=150) + scale_fill_continuous(type = "viridis")
-
-plt_123 <- ggplot(data = prior_betas_123, mapping = aes(x = Beta_1, y = Beta_2)) +
-  xlim(-6, 6) + ylim(-6,6) + xlab(TeX(r"($\Beta_1)")) + ylab(TeX(r"($\Beta_2)")) +
-  geom_hex(bins=150) + scale_fill_continuous(type = "viridis")
-
-plt_311 <- ggplot(data = prior_betas_311, mapping = aes(x = Beta_1, y = Beta_2)) +
-  xlim(-6, 6) + ylim(-6,6) + xlab(TeX(r"($\Beta_1)")) + ylab(TeX(r"($\Beta_2)")) +
-  geom_hex(bins=150) + scale_fill_continuous(type = "viridis")
-
-
-grid.arrange(plt_111, plt_122, plt_123, plt_311, ncol=2, nrow=2)
-
-plt_111_dens <-  ggplot(data = prior_betas_111, mapping = aes(x = Beta_1, y = Beta_2)) +
-  xlim(-4, 4) + ylim(-4,4) + xlab(TeX(r"($\Beta_1)")) + ylab(TeX(r"($\Beta_2)")) +
-  stat_density_2d(geom = "raster",aes(fill = after_stat(density)),contour = FALSE) + 
-  scale_fill_viridis_c(option="turbo")
-
-plt_122_dens <-  ggplot(data = prior_betas_122, mapping = aes(x = Beta_1, y = Beta_2)) +
-  xlim(-4, 4) + ylim(-4,4) + xlab(TeX(r"($\Beta_1)")) + ylab(TeX(r"($\Beta_2)")) +
-  stat_density_2d(geom = "raster",aes(fill = after_stat(density)),contour = FALSE) + 
-  scale_fill_viridis_c(option="turbo")
-
-plt_123_dens <-  ggplot(data = prior_betas_123, mapping = aes(x = Beta_1, y = Beta_2)) +
-  xlim(-4, 4) + ylim(-4,4) + xlab(TeX(r"($\Beta_1)")) + ylab(TeX(r"($\Beta_2)")) +
-  stat_density_2d(geom = "raster",aes(fill = after_stat(density)),contour = FALSE) + 
-  scale_fill_viridis_c(option="turbo")
-
-plt_311_dens <-  ggplot(data = prior_betas_311, mapping = aes(x = Beta_1, y = Beta_2)) +
-  xlim(-4, 4) + ylim(-4,4) + xlab(TeX(r"($\Beta_1)")) + ylab(TeX(r"($\Beta_2)")) +
-  stat_density_2d(geom = "raster",aes(fill = after_stat(density)),contour = FALSE) + 
-  scale_fill_viridis_c(option="turbo")
-
-grid.arrange(plt_111_dens, plt_122_dens, plt_123_dens, plt_311_dens, ncol=2, nrow=2)
-
-
 #############################################################################################
-### General check of predictive distribution for >= 3 dimensions
+### General check of consistency for predictive distribution for 3 or more dimensions
 #############################################################################################
 
 
@@ -826,14 +448,16 @@ paramat_pcor <- metrop_samp(n, m, para_len, Data_mat, mcmcsamps, improved_target
                             burn=1000)
 
 
-ESS_mat_red <- matrix(ESS_mat[ESS_mat!=0], ncol=(para_len-d))
+ESS_mat_red <- matrix(ESS_mat[ESS_mat!=0], ncol=(para_len-d)) #Removing NA runs
 ESS_mat_red
 colMeans(ESS_mat_red)
-a <- sum(ESS_mat_red)/(ncol(ESS_mat_red)*nrow(ESS_mat_red)) #average ESS per parameter
+a <- sum(ESS_mat_red)/(ncol(ESS_mat_red)*nrow(ESS_mat_red)) #average ESS total
 a
 
 #4: simulate predictive samples given samples from posterior
 
+
+#4 Remove NA rows and redefine parameters
 mu_1<-paramat_pcor[,1]
 n_missing_rows<-sum(ifelse(is.na(mu_1[is.na(mu_1)]), 1, 0))
 n <- n - n_missing_rows/mcmcsamps
@@ -859,7 +483,6 @@ for(i in 1:(mcmcsamps*n)){
 
 #5: Counting amount of times above observations
 
-
 countmat <- matrix(0, (n*m), ncol=d)
 for(i in 1:n){
   print(i)
@@ -881,25 +504,22 @@ for(i in 1:m){
 }
 
 sd_est <- apply(side_by_side/n, 1, FUN=sd)
-sd_est # (might be overestimated)
+sd_est
 
 seq(from=m, to=1)/(m+1) #expected
-rowMeans(side_by_side)/mcmcsamps
+rowMeans(side_by_side)/mcmcsamps #realization
 
 
 #############################################################################################
 ### Comparing MSPE with data from MVN priors
 #############################################################################################
 
-
-# From our prior
-
 rm(list = setdiff(ls(), lsf.str())) #removes all variables except functions
 
 set.seed(1)
 
 #1.1.1: Sample n priors
-n <- 10000
+n <- 10000 #amount of samples to run
 d <- 4 #dimension
 
 muvec<-rep(0,d)
@@ -949,23 +569,20 @@ paramat_pcor <- metrop_samp(n, m, para_len, Data_mat, mcmcsamps,
 
 ESS_mat_red <- matrix(ESS_mat[ESS_mat!=0], ncol=(para_len-d))
 colMeans(ESS_mat_red)
-a <- sum(ESS_mat_red)/(ncol(ESS_mat_red)*nrow(ESS_mat_red)) #average ESS per parameter
-a
+sum(ESS_mat_red)/(ncol(ESS_mat_red)*nrow(ESS_mat_red)) #average ESS per parameter
 
-mu_1<-paramat_pcor[,1]
+
+
 #removing crashed samples
+mu_1<-paramat_pcor[,1]
 cond <- is.na(mu_1[seq(1, ((n-1)*mcmcsamps+1), by=mcmcsamps)])
-
 removals<-rep(TRUE, holdout*n)
-
 for(i in 1:n){
   if(cond[i]==TRUE){
     removals[(((i-1)*holdout)+1):(i*holdout)] <- rep(FALSE, holdout)
   }
 }
-
 mth_obs_1 <- mth_obs[removals,]
-
 n_missing_rows <- sum(ifelse(cond, 1, 0))
 n_1 <- n - n_missing_rows
 paramat_pcor <- paramat_pcor[complete.cases(paramat_pcor),]
@@ -983,7 +600,6 @@ infomat <- matrix(NA, nrow = holdout*mcmcsamps*n_1, ncol=5)
 colnames(infomat) <- c("Predictions", "Actual", "Residual", "Estimated SE", "Corrected MSE")
 
 for(i in 1:n_1){
-  print(i)
   for(j in 1:mcmcsamps){
     theta <- paramat[((i-1)*mcmcsamps + j),] # 1 sample from posterior
     
@@ -1073,59 +689,16 @@ for(i in 1:n){
 
 infomat_b[,5] <- infomat_b[,3]^2 - infomat_b[,4]^2
 
-mean(infomat[,3]^2)
-mean(infomat_b[,3]^2)
+mean(infomat[,3]^2) #Estimated MSPE MVN
+mean(infomat_b[,3]^2) #Estimated MSPE B. Lasso
 
-mean(infomat[,5])
-mean(infomat_b[,5])
-
-accrate
-quantile(ESS_mat_red, 0.01)
-n_1
+accrate #acceptance rate
+quantile(ESS_mat_red, 0.01) #quantile of ESS
+n_1 #amount of total accepted runs
 
 par(mfrow=c(2,1))
 hist(infomat[,3], breaks=100)
 hist(infomat_b[,3], breaks=100)
-
-#Looking at first realization
-realization1<-Data_mat[1:m,]
-ourmod_mvn <- paramat[1:mcmcsamps,]
-ourmod_beta <- betamat[1:mcmcsamps,]
-blasso_beta <- betamat_b[1:samps,]
-
-colnames(realization1) <- c("y","x_1","x_2")
-lmcoef <- lm(y ~., data=as.data.frame(realization1))$coef #lm coefficients
-
-lmcoef
-colMeans(ourmod_beta) #Our model coefficients
-colMeans(blasso_beta) #Bayesian Lasso coefficients
-
-summary(betamat[1:mcmcsamps,]) 
-summary(betamat_b[1:samps,])
-
-par(mfrow=c(2,3)) #top row our model
-hist(ourmod_beta[,1], breaks=20, main="Beta_0")
-hist(ourmod_beta[,2], breaks=20, main="Beta_1")
-hist(ourmod_beta[,3], breaks=20, main="Beta_2")
-hist(blasso_beta[,1], breaks=20, main="Beta_0")
-hist(blasso_beta[,2], breaks=20, main="Beta_1")
-hist(blasso_beta[,3], breaks=20, main="Beta_2")
-
-summary(ourmod_mvn)
-
-par(mfrow=c(3,3))
-hist(ourmod_mvn[,1])
-hist(ourmod_mvn[,2])
-hist(ourmod_mvn[,3])
-hist(ourmod_mvn[,4])
-hist(ourmod_mvn[,5])
-hist(ourmod_mvn[,6])
-hist(ourmod_mvn[,7])
-hist(ourmod_mvn[,8])
-hist(ourmod_mvn[,9])
-
-
-
 
 #############################################################################################
 ### Comparing MSPE with data from B. Lasso priors
@@ -1137,17 +710,17 @@ rm(list = setdiff(ls(), lsf.str())) #removes all variables except functions
 
 set.seed(1)
 
-n <- 10000
+n <- 10000 #Amount of mcmc chains
 d <- 4
-p <- (d-1) #for notational purposes, denote vector (y, x_1 , ..., x_p)
-m <- 60
+p <- (d-1)
+m <- 60 #amount of total observations (including nonobserved values)
 holdout <- 20
 
 r <- 1
 delta <- 1 
 lambda_sq <- rgamma(n, shape=r, rate=delta)
 
-sigma_sq <- 1 #has prior 1/sigma_sq (improper) so we fix it
+sigma_sq <- 1 #has prior 1/sigma_sq^2 (improper) so we fix it, see notation for B. Lasso
 tau_sq <- matrix(NA, nrow=n, ncol=p)
 beta_samp <- matrix(NA, nrow = n, ncol = p)
 
@@ -1187,7 +760,7 @@ for(i in 1:(n)){
   y[(1 + (i-1)*m): (i*m)] <- rmvnorm(1, mean=fulldata[(1 + ((i-1)*m)):((i*m)),] %*% beta_samp[i,], sigma_sq * diag(m))
 }
 
-Data_mat <- cbind(y,fulldata)
+Data_mat <- cbind(y,fulldata) #Response and design matrix in one matrix
 
 #Standardizing, as assumed for B. Lasso
 for(i in 1:n){
@@ -1346,7 +919,9 @@ mean(infomat_b[,5])
 accrate
 n_1
 quantile(ESS_mat_red, 0.01)
-#plots
+
+
+#Plots, not included in thesis
 
 #betamat d=3
 par(mfrow=c(2,3))
@@ -1369,20 +944,6 @@ hist(betamat_b[,2], breaks=50, main="Beta_1")
 hist(betamat_b[,3], breaks=50, main="Beta_2")
 hist(betamat_b[,4], breaks=50, main="Beta_3")
 
-#betamat d=5
-par(mfrow=c(3,4))
-hist(betamat[,1], breaks=50, main="Beta_0")
-hist(betamat[,2], breaks=50, main="Beta_1")
-hist(betamat[,3], breaks=50, main="Beta_2")
-hist(betamat[,4], breaks=50, main="Beta_3")
-hist(betamat[,5], breaks=50, main="Beta_4")
-
-hist(betamat_b[,1], breaks=50, main="Beta_0")
-hist(betamat_b[,2], breaks=50, main="Beta_1")
-hist(betamat_b[,3], breaks=50, main="Beta_2")
-hist(betamat_b[,4], breaks=50, main="Beta_3")
-hist(betamat_b[,5], breaks=50, main="Beta_4")
-
 #ourmod d=3
 par(mfrow=c(3,3))
 hist(paramat[,1], breaks=100, main="mu_1")
@@ -1395,7 +956,7 @@ hist(paramat[,7], breaks=100, main="rho_12")
 hist(paramat[,8], breaks=100, main="rho_13")
 hist(paramat[,9], breaks=100, main="rho_23")
 
-#for d=4
+#ourmod d=4
 par(mfrow=c(4,4))
 hist(paramat[,1], breaks=100, main="mu_1")
 hist(paramat[,2], breaks=100, main="mu_2")
@@ -1412,18 +973,18 @@ hist(paramat[,12], breaks=100, main="rho_23")
 hist(paramat[,13], breaks=100, main="rho_24")
 hist(paramat[,14], breaks=100, main="rho_34")
 
-colMeans(paramat)
-
 #############################################################################################
 ### Example: Longley dataset (Orange trees circumference (cm) vs age (days))
 #############################################################################################
+
+# Code not meant to be general, only change n_obs
 
 rm(list = setdiff(ls(), lsf.str())) #Clear variables
 
 set.seed(4)
 
 samps <- 100000 #number of posterior samples
-n_obs <- 22
+n_obs <- 20
 
 data <- Orange
 data <- data[,-1] #Remove type of tree from dataset
@@ -1484,154 +1045,3 @@ for(i in 91:100){
   abline(a=beta_0[i], b=beta_1[i], col="goldenrod3", lwd=1.5)
 }
 points(data, pch=19)
-
-##############################################################################
-#Check of equivariance properties
-##############################################################################
-
-#Scale
-
-rm(list = setdiff(ls(), lsf.str())) #Clear variables
-
-set.seed(3)
-testdata <- matrix(rnorm(36), nrow=12)
-testdata
-
-c <- 10 #scaling
-d <- 3 #dimension
-
-testdata2 <- testdata
-testdata2[,1] <- testdata[,1] * c
-
-params <- metrop_samp(2, 12, 9, rbind(testdata, testdata2), 10000, 
-                            improved_target_dens, burn=10000, holdout=0)
-ESS_mat #good convergence
-
-betamat <- betafrommvn(pcors_to_corrs(params, 3), 3)
-
-
-params1 <- betamat[1:10000,]
-params2 <- betamat[10001:20000,]
-
-params1 <- params1 * c
-
-#Should be equal
-summary(params1) #non intercept scale invariant, intercept almost so
-summary(params2)
-
-#Regression equivariance (data: (Y + Xv, X))
-
-rm(list = setdiff(ls(), lsf.str())) #Clear variables
-
-set.seed(3)
-
-d <- 3
-v <- c(1,4)
-
-testdata <- matrix(rnorm(36), nrow=12)
-
-testdata2 <- testdata
-testdata2[,1] <- testdata[,1] + testdata[,2:3] %*% v
-
-
-params <- metrop_samp(2, 12, 9, rbind(testdata, testdata2), 10000, 
-                      improved_target_dens, burn=100000, holdout=0)
-
-ESS_mat #good convergence
-
-betamat <- betafrommvn(pcors_to_corrs(params, 3), 3)
-
-
-params1 <- betamat[1:10000,] 
-params2 <- betamat[10001:20000,]
-
-params1[,2:3] <- params1[,2:3] + cbind(rep(v[1], 10000), rep(v[2], 10000))
-
-#Should be equal
-summary(params1) #not equal
-summary(params2)
-
-#Affine equivariance (data: (Y , XA))
-
-rm(list = setdiff(ls(), lsf.str())) #Clear variables
-
-d <- 3 #dimension
-A <- matrix(c(1,1,1,2), nrow=2)
-
-set.seed(3)
-
-testdata <- matrix(rnorm(36), nrow=12)
-
-
-testdata2 <- testdata
-testdata2[,2:3] <- testdata[,2:3] + testdata[,2:3] %*% A
-
-
-params <- metrop_samp(2, 12, 9, rbind(testdata, testdata2), 10000, 
-                      improved_target_dens, burn=10000, holdout=0)
-
-ESS_mat
-
-betamat <- betafrommvn(pcors_to_corrs(params, 3), 3)
-
-
-params1 <- betamat[1:10000,] 
-params2 <- betamat[10001:20000,]
-
-params1[,2:3] <- solve(A) %*% t(params1[,2:3])
-
-#Should be equal
-summary(params1) #not equal
-summary(params2)
-
-
-################################################################
-
-rm(list = setdiff(ls(), lsf.str()))
-
-d <- 3
-samps <- 10000
-
-
-data <- rbind(c(0,0), c(1,0), c(0,1), c(1,1))
-data
-
-
-bcoef <- blasso(data[,1], data[,2], T=samps, thin=10)
-bcoefs <- cbind(bcoef$mu, bcoef$beta)
-par(mfrow=c(1,2))
-hist(bcoefs[,1], breaks=50)
-hist(bcoefs[,2], breaks=50)
-
-colMeans(bcoefs) #bayesian lasso posterior mean estimates
-
-covmat <- cov(data)
-pcorrmat <- cor2pcor(cov2cor(covmat))
-init <- c(sqrt(diag(covmat)), pcorrmat[lower.tri(pcorrmat)==TRUE])
-
-chain <- MCMCmetrop1R(improved_target_dens, theta.init=init, thin=10,
-                      burnin = 10000, x=data, mcmc=samps*10)
-colMeans(chain)
-effectiveSize(chain)
-
-#sample mu
-mu <- matrix(NA, nrow=samps, ncol=2)
-beta_0 <- rep(NA, nrow=samps)
-for(j in 1:(samps)){
-  sigmas <- c(chain[j,1], chain[j,2])
-  corrmat <- toeplitz(c(1,chain[j,3]))
-  Sigma <- (1/4) * diag(sigmas) %*% corrmat %*% diag(sigmas)
-  mu[j,] <- rmvnorm(1, mean=(colMeans(data)), sigma = (Sigma))
-}
-
-beta_1 <- (chain[,2]/chain[,1]) * chain[,3]
-for(j in 1:(samps)){
-  beta_0[j] <- mu[j,2] - mu[j,1] * beta_1[j]
-}
-
-
-par(mfrow=c(2,2))
-hist(beta_0, breaks=50, xlim=c(-5,5))
-hist(beta_1, breaks=50, xlim=c(-5,5))
-hist(bcoefs[,1], breaks=50, xlim=c(-5,5))
-hist(bcoefs[,2], breaks=50, xlim=c(-5,5))
