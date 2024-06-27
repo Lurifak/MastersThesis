@@ -1,4 +1,4 @@
 # Master thesis
 
-Under construction, will finish by 26th of June.
+Code used in my masters thesis
  
